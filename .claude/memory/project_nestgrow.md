@@ -1,0 +1,127 @@
+---
+name: NestGrow project overview
+description: Stack, structure, license server, plan limits, auth system, scheduler jobs, and key paths for NestGrow
+type: project
+originSessionId: 5c0ef111-b4c5-4ee2-83cd-505b4c18edbe
+---
+NestGrow is a plant growth crib (culla) management system with IoT control via ESP32.
+
+**Product:** NestGrow by lake8.dev  
+**License product code:** `"NESTGROW"` (uppercase — the License Server is case-sensitive)  
+**License Server:** https://license.lake8.dev — local source at /home/tommy/Documenti/license-server/  
+**Root path:** /home/tommy/Documenti/NestGrow/nestgrow-backend/  
+**Git remote:** https://github.com/jaffa2970/nestgrow-backend  
+
+**Why:** IoT-connected growing system with per-plan crib limits enforced at the API layer.
+
+---
+
+## Stack
+
+- Python 3.13 + FastAPI + SQLAlchemy async (AsyncSession, Mapped[]) + Alembic + MariaDB (aiomysql)
+- Vue 3 + Vite + Vue Router + Axios (no Pinia — reactive auth via module-level ref singleton `src/auth.js`)
+- MQTT via asyncio-mqtt (eclipse-mosquitto:2)
+- APScheduler AsyncIOScheduler
+- Docker services: mosquitto / db (mariadb:11) / backend (:8000) / frontend (:3000 via nginx)
+
+---
+
+## Plan limits (PIANO_LIMITI_DEFAULT)
+
+| Piano | Max culle | Note |
+|-------|-----------|------|
+| free  | 1         | |
+| pro   | 5         | |
+| ai    | 10        | "enterprise" and "ultra" map to "ai" on the LS |
+
+Stored in `piano_limiti` table. `PIANO_LIMITI_DEFAULT` dict in `app/licensing.py` is the in-memory fallback.
+
+---
+
+## APScheduler jobs (app/main.py)
+
+| Job ID | Function | Interval | Note |
+|--------|----------|----------|------|
+| license_heartbeat | heartbeat() | 60 min | POST /heartbeat to LS |
+| jwt_poll | poll_pending_jwt() | 5 min | Collect pending JWT delivery |
+| irrigation_tick | _irrigation_tick() | 60 sec | Auto-irrigation logic |
+| messages_sync | sync_messages() | **30s (DEBUG)** | Restore to 15 min after debug |
+
+`sync_messages()` is also called with `await` at startup (before `yield`) so logs appear immediately on boot.
+
+---
+
+## Alembic migrations (in order)
+
+- 0001 initial_schema
+- 0002 culle_refactor
+- 0003 zone_config_messages
+- 0004 piano_limiti_ai
+- 0005 jwt_token_support (adds jwt_token VARCHAR(500))
+- 0006 jwt_token_text (widens to TEXT — RS256 JWTs are 800-1000+ chars)
+- 0007 messaggi_tipo_varchar (ENUM → VARCHAR(50) for LS notification types)
+- 0008 utenti (user management table, seeds admin from ADMIN_PASSWORD env)
+
+---
+
+## Auth system
+
+- **DB-based** (utenti table) — NOT env-var hardcoded anymore
+- Roles: `administrator`, `user`
+- JWT claims: `sub` (username), `ruolo`, `uid` (user id)
+- FastAPI deps: `get_current_user` → dict, `require_admin` → 403 if not administrator, `require_user` → any valid token
+- Write endpoints (POST/PUT/DELETE culle, zone, pump, license/register, support/tickets POST) require `require_admin`
+- Read endpoints use `require_user`
+- Seed: migration 0008 inserts admin user hashed with bcrypt from `ADMIN_PASSWORD` env (default: "admin")
+
+---
+
+## Frontend auth (src/auth.js)
+
+Module-level reactive ref singleton — the single source of truth for role/username. All components import from here. `localStorage.getItem()` in `computed()` is NOT reactive in Vue; this pattern fixes that.
+
+```
+setAuth(token)   — call after login; decodes JWT, updates refs + localStorage
+clearAuth()      — call on logout/401; resets refs + clears localStorage keys
+isAdmin          — computed(() => _ruolo.value === 'administrator')
+```
+
+localStorage keys: `ng_token`, `ng_ruolo`, `ng_username`
+
+---
+
+## License Server API (license.lake8.dev)
+
+All endpoints are at root (no `/api/v1/` prefix — that was wrong):
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | /register | none | Body: prodotto_codice, ragione_sociale, piva, email, nome, cognome, piano, machine_id, version |
+| POST | /heartbeat | Bearer JWT | Body: token, prodotto_codice, sessioni_attive |
+| GET | /license/pending | none | Params: machine_id, product — 60s rate limit per machine_id |
+| POST | /license/delivered | none | Acknowledges JWT pickup |
+| GET | /notifications | Bearer JWT | Params: machine_id (optional). Returns list of {id, tipo, titolo, corpo, letto, data_creazione} |
+| GET | /support/tickets | Bearer JWT | Returns TicketListOut list — filtered by licenza_id (our LS fix) |
+| GET | /support/tickets/{id} | Bearer JWT | Returns TicketOut with messaggi array |
+| POST | /support/tickets | Bearer JWT | Body JSON: oggetto, testo, priorita |
+
+**JWT delivery flow:** POST /register → LS queues as pending → poll GET /license/pending (respects 60s rate limit) → if trovato=true, token returned → POST /license/delivered to acknowledge.
+
+**MACHINE_ID:** `"nestgrow-server"` (fixed identifier in `app/licensing.py`)
+
+---
+
+## Key models (app/models.py)
+
+- `LicenzaCache` — single row (id=1), stores piano, valida_fino, jwt_token (TEXT), piva, email
+- `Utente` — username, password_hash (bcrypt), ruolo (administrator/user), attivo
+- `MessaggioCache` — tipo is VARCHAR(50) (was ENUM — LS sends "aggiornamento", "comunicazione" etc.)
+- `Culla`, `Zona`, `Lettura`, `Irrigazione`, `PianoLimiti`
+
+---
+
+## Pending / known issues
+
+- `messages_sync` job interval is currently 30s (DEBUG) — restore to 15 min after confirming notifications work
+- License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
+- The JWT consumed during VARCHAR(500) overflow (before migration 0006) was marked delivered on LS but not saved locally — if jwt_token is empty, admin needs to manually activate via `/license/activate`
