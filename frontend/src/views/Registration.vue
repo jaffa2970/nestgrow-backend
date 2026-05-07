@@ -71,7 +71,7 @@
             <input v-model="form.tos_accettato" type="checkbox" />
             <span>
               Accetto i
-              <a href="https://license.lake8.dev/tos" target="_blank">Termini di Servizio</a>
+              <a href="https://license.lake8.dev/licenza" target="_blank">Licenza d'uso</a>
               e la
               <a href="https://license.lake8.dev/privacy" target="_blank">Privacy Policy</a>
             </span>
@@ -116,6 +116,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
+import { isAdmin } from '../auth.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -147,6 +148,11 @@ const plans = [
 ]
 
 onMounted(async () => {
+  if (isUpgrade.value && !isAdmin.value) {
+    error.value = 'Solo gli amministratori possono modificare il piano'
+    setTimeout(() => router.push('/'), 2000)
+    return
+  }
   if (isUpgrade.value) {
     try {
       const { data } = await axios.get('/license/')
@@ -213,11 +219,15 @@ async function handleSubmit() {
       router.push('/login')
     }
   } catch (e) {
-    const detail = e.response?.data?.detail
-    if (Array.isArray(detail)) {
-      error.value = detail.map(d => d.msg).join(', ')
+    if (e.response?.status === 500) {
+      error.value = 'Errore durante la registrazione. Se stai tentando di aggiornare il piano, verifica che il piano selezionato sia disponibile o contatta il supporto lake8.dev'
     } else {
-      error.value = detail || 'Errore durante la registrazione'
+      const detail = e.response?.data?.detail
+      if (Array.isArray(detail)) {
+        error.value = detail.map(d => d.msg).join(', ')
+      } else {
+        error.value = detail || 'Errore durante la registrazione'
+      }
     }
   } finally {
     clearTimeout(loadingTimer)

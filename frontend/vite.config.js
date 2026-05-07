@@ -11,6 +11,7 @@ export default defineConfig({
       '/license': { target: 'http://localhost:8000', changeOrigin: true },
       '/messages': { target: 'http://localhost:8000', changeOrigin: true },
       '/support': { target: 'http://localhost:8000', changeOrigin: true },
+      '/utenti': { target: 'http://localhost:8000', changeOrigin: true },
       '/tank': { target: 'http://localhost:8000', changeOrigin: true },
       '/health': { target: 'http://localhost:8000', changeOrigin: true },
     },

@@ -8,7 +8,7 @@
         <strong>{{ license.max_culle }} {{ license.max_culle === 1 ? 'culla' : 'culle' }}</strong>
         del piano <strong>{{ license.piano?.toUpperCase() }}</strong>.
       </span>
-      <button class="btn-upgrade" @click="$router.push('/register?upgrade=true')">
+      <button v-if="isAdmin" class="btn-upgrade" @click="$router.push('/register?upgrade=true')">
         Cambia piano →
       </button>
     </div>
@@ -34,7 +34,7 @@
     <div v-if="tab === 'culle'">
       <div class="section-header">
         <h2>Culle attive</h2>
-        <button class="btn-add" @click="showAddModal = true">+ Nuova culla</button>
+        <button v-if="isAdmin" class="btn-add" @click="showAddModal = true">+ Nuova culla</button>
       </div>
 
       <div v-if="loadError" class="alert-error">{{ loadError }}</div>
@@ -83,16 +83,18 @@
                   {{ zona.ultima_lettura_ts ? formatTs(zona.ultima_lettura_ts) : '—' }}
                 </td>
                 <td class="pump-cell">
-                  <button
-                    class="btn-pump on"
-                    :disabled="zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`]"
-                    @click="pumpCmd(culla.id, zona.numero_zona, 'on')"
-                  >ON</button>
-                  <button
-                    class="btn-pump off"
-                    :disabled="!zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`]"
-                    @click="pumpCmd(culla.id, zona.numero_zona, 'off')"
-                  >OFF</button>
+                  <template v-if="isAdmin">
+                    <button
+                      class="btn-pump on"
+                      :disabled="zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`]"
+                      @click="pumpCmd(culla.id, zona.numero_zona, 'on')"
+                    >ON</button>
+                    <button
+                      class="btn-pump off"
+                      :disabled="!zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`]"
+                      @click="pumpCmd(culla.id, zona.numero_zona, 'off')"
+                    >OFF</button>
+                  </template>
                   <span v-if="zona.pompa_on" class="pump-indicator">💧</span>
                 </td>
                 <td class="edit-cell">
@@ -101,7 +103,7 @@
                     class="saved-flash"
                   >✓ Salvato</span>
                   <button
-                    v-else
+                    v-else-if="isAdmin"
                     class="btn-edit"
                     title="Configura zona"
                     @click="openZoneModal(culla.id, zona)"
@@ -160,7 +162,7 @@
             <span v-if="license.jwt_attivo" class="jwt-badge active">✓ Attiva</span>
             <span v-else class="jwt-badge pending">⏳ In approvazione</span>
           </div>
-          <div class="license-actions">
+          <div v-if="isAdmin" class="license-actions">
             <button class="btn-upgrade-full" @click="$router.push('/register?upgrade=true')">
               🔄 Aggiorna piano
             </button>
@@ -202,7 +204,7 @@
     <div v-if="tab === 'supporto'" class="support-section">
       <div class="section-header">
         <h2>Supporto tecnico</h2>
-        <button class="btn-add" @click="showTicketModal = true" :disabled="jwtPending">+ Nuovo ticket</button>
+        <button v-if="isAdmin" class="btn-add" @click="showTicketModal = true" :disabled="jwtPending">+ Nuovo ticket</button>
       </div>
 
       <div v-if="supportError" class="alert-error">{{ supportError }}</div>
@@ -231,15 +233,18 @@
             <span class="ticket-chevron">{{ expandedTicket === t.id ? '▲' : '▼' }}</span>
           </div>
           <div v-if="expandedTicket === t.id" class="ticket-corpo">
-            <div v-if="t.messaggi && t.messaggi.length" class="ticket-messages">
+            <div v-if="loadingTicketId === t.id" class="ticket-loading">Caricamento...</div>
+            <div v-else-if="t.messaggi && t.messaggi.length" class="ticket-messages">
               <div v-for="msg in t.messaggi" :key="msg.id" class="ticket-msg"
                 :class="msg.autore_tipo">
-                <span class="ticket-msg-author">{{ msg.autore_tipo === 'cliente' ? 'Tu' : 'lake8.dev' }}</span>
-                <p>{{ msg.testo }}</p>
-                <span class="ticket-msg-ts">{{ formatDate(msg.data_creazione) }}</span>
+                <div class="ticket-msg-header">
+                  <span class="ticket-msg-author">{{ msg.autore_tipo === 'cliente' ? 'Tu' : '🛠 lake8.dev' }}</span>
+                  <span class="ticket-msg-ts">{{ formatDate(msg.data_creazione) }}</span>
+                </div>
+                <p class="ticket-msg-testo">{{ msg.testo }}</p>
               </div>
             </div>
-            <div v-else class="ticket-q">{{ t.n_messaggi > 0 ? '...' : 'Nessun messaggio' }}</div>
+            <div v-else class="ticket-q">Nessun messaggio nel ticket.</div>
           </div>
         </div>
       </div>
@@ -258,7 +263,7 @@
           <input v-model="newCulla.device_id" type="text" placeholder="nestgrow-a4b2" />
         </div>
         <p v-if="addError" class="alert-error small">{{ addError }}</p>
-        <button v-if="isLimitError" class="btn-upgrade-modal" @click="$router.push('/register?upgrade=true')">
+        <button v-if="isLimitError && isAdmin" class="btn-upgrade-modal" @click="$router.push('/register?upgrade=true')">
           🔄 Cambia piano →
         </button>
         <div class="modal-actions">
@@ -371,6 +376,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { isAdmin } from '../auth.js'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -581,6 +587,7 @@ function formatDate(dt) {
 }
 
 const jwtPending = ref(false)
+const loadingTicketId = ref(null)
 
 async function openSupporto() {
   tab.value = 'supporto'
@@ -595,11 +602,22 @@ async function openSupporto() {
   }
 }
 
-function toggleTicket(t) {
+async function toggleTicket(t) {
   if (expandedTicket.value === t.id) {
     expandedTicket.value = null
-  } else {
-    expandedTicket.value = t.id
+    return
+  }
+  expandedTicket.value = t.id
+  if (t.messaggi !== undefined) return  // already fetched
+  loadingTicketId.value = t.id
+  try {
+    const { data } = await axios.get(`/support/tickets/${t.id}`)
+    const idx = tickets.value.findIndex(x => x.id === t.id)
+    if (idx !== -1) Object.assign(tickets.value[idx], data)
+  } catch {
+    // detail fetch failed — show fallback "Nessun messaggio"
+  } finally {
+    loadingTicketId.value = null
   }
 }
 
@@ -638,6 +656,7 @@ async function submitTicket() {
 function msgIcon(tipo) {
   if (tipo === 'critical') return '🔴'
   if (tipo === 'warning') return '⚠️'
+  if (tipo === 'aggiornamento') return '🔄'
   return 'ℹ️'
 }
 
@@ -836,6 +855,7 @@ onUnmounted(() => {
 .msg-card.unread { border-color: #1976d2; }
 .msg-card.critical { background: #fff5f5; border-color: #e53935; }
 .msg-card.warning { background: #fffde7; border-color: #fbc02d; }
+.msg-card.aggiornamento { background: #e3f2fd; border-color: #1976d2; }
 .msg-card.info { background: white; }
 
 .msg-header {
@@ -983,12 +1003,15 @@ onUnmounted(() => {
 }
 .ticket-q { white-space: pre-wrap; margin-bottom: 12px; }
 .ticket-messages { display: flex; flex-direction: column; gap: 10px; }
+.ticket-loading { color: #999; font-size: 0.85rem; padding: 8px 0; }
 .ticket-msg { border-radius: 8px; padding: 10px 12px; }
 .ticket-msg.cliente { background: #f5f5f5; }
+.ticket-msg.admin { background: #f0faf2; border-left: 3px solid #2d8048; }
 .ticket-msg.operatore { background: #f0faf2; border-left: 3px solid #2d8048; }
+.ticket-msg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .ticket-msg-author { font-size: 0.78rem; font-weight: 700; color: #555; }
-.ticket-msg p { margin-top: 4px; white-space: pre-wrap; font-size: 0.88rem; }
-.ticket-msg-ts { font-size: 0.72rem; color: #aaa; display: block; margin-top: 4px; }
+.ticket-msg-ts { font-size: 0.72rem; color: #aaa; }
+.ticket-msg-testo { margin: 0; white-space: pre-wrap; font-size: 0.88rem; color: #333; }
 
 /* New ticket modal textarea/select */
 .field textarea {

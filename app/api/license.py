@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_admin
 from app.core.config import settings
 from app.database import get_db
 from app.licensing import (
@@ -113,28 +113,41 @@ async def get_license_status(
 async def register_license(
     payload: RegisterPayload,
     db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
     _PIANO_MAP = {"enterprise": "ai", "ultra": "ai"}
     piano_server = _PIANO_MAP.get(payload.piano, payload.piano)
 
     # ── Step 1: try License Server registration ──────────────────────────────
     server_ok = False
+    _reg_body = {
+        "prodotto_codice": "NESTGROW",
+        "ragione_sociale": payload.ragione_sociale,
+        "piva": payload.piva,
+        "email": str(payload.email),
+        "nome": "",
+        "cognome": "",
+        "piano": piano_server,
+        "machine_id": MACHINE_ID,
+        "version": "0.3.0",
+    }
+    logger.info("=== REGISTER PAYLOAD ===")
+    logger.info("  prodotto_codice : %r", _reg_body["prodotto_codice"])
+    logger.info("  ragione_sociale : %r", _reg_body["ragione_sociale"])
+    logger.info("  piva            : %r  (len=%d)", _reg_body["piva"], len(_reg_body["piva"]))
+    logger.info("  email           : %r", _reg_body["email"])
+    logger.info("  piano           : %r  (input=%r)", _reg_body["piano"], payload.piano)
+    logger.info("  machine_id      : %r", _reg_body["machine_id"])
+    logger.info("  version         : %r", _reg_body["version"])
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"{settings.license_server_url}/register",
-                json={
-                    "prodotto_codice": "NESTGROW",
-                    "ragione_sociale": payload.ragione_sociale,
-                    "piva": payload.piva,
-                    "email": str(payload.email),
-                    "nome": "",
-                    "cognome": "",
-                    "piano": piano_server,
-                    "machine_id": MACHINE_ID,
-                    "version": "0.3.0",
-                },
+                json=_reg_body,
             )
+        logger.info("=== REGISTER RESPONSE %d ===", resp.status_code)
+        logger.info("Headers: %s", dict(resp.headers))
+        logger.info("Body: %s", resp.text)
         if resp.status_code in (200, 201):
             server_ok = True
             logger.info("Registrazione OK sul License Server (piano=%s)", piano_server)
@@ -142,12 +155,18 @@ async def register_license(
             # Already registered — still try JWT polling (might be pending)
             server_ok = True
             logger.info("Registrazione già presente sul License Server — polling JWT")
+        elif resp.status_code >= 500:
+            logger.error("License Server %d — body completo: %s", resp.status_code, resp.text)
+            if piano_server != "free":
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            logger.warning("License Server 500 — fallback free plan")
         elif piano_server != "free":
+            logger.error("License Server %d — body: %s", resp.status_code, resp.text)
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         else:
             logger.warning(
                 "License Server ha rifiutato la registrazione free (%d): %s",
-                resp.status_code, resp.text[:200],
+                resp.status_code, resp.text,
             )
     except httpx.RequestError as exc:
         if piano_server != "free":

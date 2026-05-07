@@ -28,6 +28,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { setAuth } from '../auth.js'
 
 const router = useRouter()
 const username = ref('')
@@ -46,7 +47,7 @@ async function handleLogin() {
     const { data } = await axios.post('/auth/login', params, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
-    localStorage.setItem('ng_token', data.access_token)
+    setAuth(data.access_token)
     router.push('/')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Errore di connessione'

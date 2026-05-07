@@ -11,6 +11,7 @@ from app.api import auth, culle
 from app.api import license as license_api
 from app.api import messages as messages_api
 from app.api import support as support_api
+from app.api import utenti as utenti_api
 from app.database import AsyncSessionLocal, engine
 from app.licensing import heartbeat, poll_pending_jwt
 from app.messaging import sync_messages
@@ -138,8 +139,15 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(heartbeat, "interval", minutes=60, id="license_heartbeat")
     _scheduler.add_job(poll_pending_jwt, "interval", minutes=5, id="jwt_poll")
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
-    _scheduler.add_job(sync_messages, "interval", minutes=15, id="messages_sync")
+    _scheduler.add_job(sync_messages, "interval", seconds=30, id="messages_sync")  # DEBUG: 30s
     _scheduler.start()
+    logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
+
+    # Run synchronously at boot so logs appear immediately and exceptions are visible
+    try:
+        await sync_messages()
+    except Exception as exc:
+        logger.error("sync_messages al boot ha fallito: %s", exc, exc_info=True)
 
     logger.info("NestGrow backend avviato")
     yield
@@ -174,6 +182,7 @@ app.include_router(culle.router)
 app.include_router(license_api.router)
 app.include_router(messages_api.router)
 app.include_router(support_api.router)
+app.include_router(utenti_api.router)
 
 
 @app.get("/health")

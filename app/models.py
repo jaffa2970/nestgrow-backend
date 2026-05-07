@@ -138,13 +138,22 @@ class LicenzaCache(Base):
     jwt_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class Utente(Base):
+    __tablename__ = "utenti"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    ruolo: Mapped[str] = mapped_column(Enum("administrator", "user"), nullable=False, default="user")
+    attivo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    creato_il: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class MessaggioCache(Base):
     __tablename__ = "messaggi_cache"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    tipo: Mapped[str] = mapped_column(
-        Enum("info", "warning", "critical"), default="info"
-    )
+    tipo: Mapped[str] = mapped_column(String(50), default="info")
     titolo: Mapped[str] = mapped_column(String(200), nullable=False)
     corpo: Mapped[str] = mapped_column(Text, nullable=False)
     data_msg: Mapped[datetime] = mapped_column(DateTime, nullable=False)

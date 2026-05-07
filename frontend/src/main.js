@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import axios from 'axios'
+import { clearAuth } from './auth.js'
 
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -19,7 +20,7 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('ng_token')
+      clearAuth()
       router.push('/login')
     }
     return Promise.reject(error)

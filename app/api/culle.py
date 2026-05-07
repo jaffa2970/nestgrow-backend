@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
+from app.api.auth import require_admin, require_user
 from app.database import get_db
 from app.licensing import get_licenza, get_max_culle
 from app.models import Culla, Irrigazione, Lettura, Zona
@@ -172,7 +172,7 @@ def _build_culla_out(
 @router.get("/", response_model=list[CullaOut])
 async def list_culle(
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_user),
 ):
     result = await db.execute(
         select(Culla).where(Culla.attiva == True).order_by(Culla.id)
@@ -190,7 +190,7 @@ async def list_culle(
 async def create_culla(
     body: CullaCreate,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ):
     # License enforcement
     max_culle = await get_max_culle(db)
@@ -232,7 +232,7 @@ async def create_culla(
 async def get_culla(
     culla_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_user),
 ):
     culla = await db.get(Culla, culla_id)
     if not culla:
@@ -247,7 +247,7 @@ async def update_culla(
     culla_id: int,
     body: CullaUpdate,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ):
     culla = await db.get(Culla, culla_id)
     if not culla:
@@ -265,7 +265,7 @@ async def update_culla(
 async def delete_culla(
     culla_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ):
     culla = await db.get(Culla, culla_id)
     if not culla:
@@ -281,7 +281,7 @@ async def delete_culla(
 async def get_zone_culla(
     culla_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_user),
 ):
     if not await db.get(Culla, culla_id):
         raise HTTPException(status_code=404, detail="Culla non trovata")
@@ -296,7 +296,7 @@ async def update_zona(
     numero_zona: int,
     body: ZonaUpdate,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ):
     result = await db.execute(
         select(Zona).where(
@@ -321,7 +321,7 @@ async def pump_command(
     numero_zona: int,
     body: PumpCmd,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ):
     if body.cmd not in ("on", "off"):
         raise HTTPException(status_code=400, detail="cmd deve essere 'on' o 'off'")
@@ -378,7 +378,7 @@ async def get_readings(
     numero_zona: int,
     hours: int = 24,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_user),
 ):
     result = await db.execute(
         select(Zona).where(
@@ -403,7 +403,7 @@ async def get_readings(
 async def get_serbatoio(
     culla_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: dict = Depends(require_user),
 ):
     culla = await db.get(Culla, culla_id)
     if not culla:
