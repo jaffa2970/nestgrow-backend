@@ -1,0 +1,53 @@
+# Environment — MAI committare
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Alembic
+alembic/versions/*.pyc
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# Docker volumes locali
+mosquitto/data/
+mosquitto/log/
+mariadb_data/
+
+# Certificati e chiavi
+*.pem
+*.key
+*.crt
+*.p12
+
+# Log
+*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

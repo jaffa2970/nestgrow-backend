@@ -1,0 +1,151 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import auth, pumps, sensors, zones
+from app.api import license as license_api
+from app.core.config import settings
+from app.database import AsyncSessionLocal, engine
+from app.licensing import ensure_default_licenza, heartbeat
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+_mqtt_stop = asyncio.Event()
+_scheduler = AsyncIOScheduler()
+
+
+async def _irrigation_tick() -> None:
+    """Check every zone and trigger irrigation if humidity is below threshold."""
+    from app.models import Irrigazione, Lettura, Pianta, Zona
+    from app.mqtt_client import get_client, latest_readings, latest_tank, publish_pump_cmd, pump_state
+    from sqlalchemy import select
+
+    client = await get_client()
+    if client is None:
+        return
+
+    tank_level = latest_tank.get("livello", 100.0)
+    if tank_level is not None and tank_level < 10.0:
+        logger.warning("Serbatoio sotto 10%% (%.1f) — irrigazione bloccata", tank_level)
+        return
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Zona).where(Zona.attiva == True, Zona.pianta_id != None)
+        )
+        zone = result.scalars().all()
+
+        for zona in zone:
+            pianta = await db.get(Pianta, zona.pianta_id)
+            if not pianta:
+                continue
+
+            reading = latest_readings.get(zona.id, {})
+            ts = reading.get("ts")
+            if not ts or (datetime.now(timezone.utc) - ts) > timedelta(minutes=5):
+                continue
+
+            umidita = reading.get("umidita_pct")
+            if umidita is None:
+                continue
+
+            state = pump_state.get(zona.id, {})
+
+            # Safety: pump on for more than 5 minutes → force off
+            if state.get("on") and state.get("since"):
+                elapsed = datetime.now(timezone.utc) - state["since"]
+                if elapsed > timedelta(minutes=5):
+                    logger.warning("Safety: pompa zona %d on da >5min → forzo OFF", zona.id)
+                    await publish_pump_cmd(client, zona.id, "off")
+                    # Update last irrigation record
+                    irr_result = await db.execute(
+                        select(Irrigazione)
+                        .where(Irrigazione.zona_id == zona.id, Irrigazione.ts_fine == None)
+                        .order_by(Irrigazione.ts_inizio.desc())
+                        .limit(1)
+                    )
+                    irr = irr_result.scalar_one_or_none()
+                    if irr:
+                        irr.ts_fine = datetime.now(timezone.utc)
+                        irr.durata_sec = int(elapsed.total_seconds())
+                        irr.esito = "timeout"
+                    await db.commit()
+                continue
+
+            # Trigger irrigation if humid < min and pump not running
+            if umidita < pianta.umidita_min and not state.get("on"):
+                logger.info(
+                    "Zona %d: umidità %.1f < min %.1f → avvio irrigazione",
+                    zona.id,
+                    umidita,
+                    pianta.umidita_min,
+                )
+                await publish_pump_cmd(client, zona.id, "on", pianta.durata_irrigazione_sec)
+                irr = Irrigazione(
+                    zona_id=zona.id,
+                    ts_inizio=datetime.now(timezone.utc),
+                    umidita_pre=umidita,
+                    trigger="soglia",
+                )
+                db.add(irr)
+                await db.commit()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start MQTT background task
+    import app.mqtt_client as mqtt_mod
+    mqtt_task = asyncio.create_task(mqtt_mod.mqtt_loop(_mqtt_stop))
+
+    # Initial DB seed
+    async with AsyncSessionLocal() as db:
+        await ensure_default_licenza(db)
+
+    # Scheduler: license heartbeat every 60 minutes
+    _scheduler.add_job(heartbeat, "interval", minutes=60, id="license_heartbeat")
+    # Scheduler: irrigation check every 60 seconds
+    _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
+    _scheduler.start()
+
+    logger.info("NestGrow backend avviato")
+    yield
+
+    # Graceful shutdown
+    _mqtt_stop.set()
+    _scheduler.shutdown(wait=False)
+    await asyncio.wait_for(mqtt_task, timeout=5.0)
+    await engine.dispose()
+    logger.info("NestGrow backend fermato")
+
+
+app = FastAPI(
+    title="NestGrow API",
+    version="1.0.0",
+    description="Sistema gestione culle di accrescimento vegetale — lake8.dev",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(zones.router)
+app.include_router(sensors.router)
+app.include_router(pumps.router)
+app.include_router(license_api.router)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "nestgrow-backend"}
