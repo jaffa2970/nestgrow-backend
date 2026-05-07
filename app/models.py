@@ -64,10 +64,16 @@ class Zona(Base):
     )
     numero_zona: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-4
     nome: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    descrizione_coltura: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     pianta_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("piante.id"), nullable=True
     )
     attiva: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Irrigation automation config (NULL = zone not yet configured)
+    umidita_soglia_min: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    umidita_soglia_max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    durata_irrigazione_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    irrigazione_auto: Mapped[bool] = mapped_column(Boolean, default=True)
 
     culla: Mapped["Culla"] = relationship("Culla", back_populates="zone")
     pianta: Mapped[Optional[Pianta]] = relationship("Pianta")
@@ -129,3 +135,17 @@ class LicenzaCache(Base):
     ragione_sociale: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     piva: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+
+class MessaggioCache(Base):
+    __tablename__ = "messaggi_cache"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    tipo: Mapped[str] = mapped_column(
+        Enum("info", "warning", "critical"), default="info"
+    )
+    titolo: Mapped[str] = mapped_column(String(200), nullable=False)
+    corpo: Mapped[str] = mapped_column(Text, nullable=False)
+    data_msg: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    letto: Mapped[bool] = mapped_column(Boolean, default=False)
+    ricevuto_il: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

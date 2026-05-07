@@ -30,7 +30,12 @@ class CullaUpdate(BaseModel):
 
 class ZonaUpdate(BaseModel):
     nome: Optional[str] = None
+    descrizione_coltura: Optional[str] = None
     pianta_id: Optional[int] = None
+    umidita_soglia_min: Optional[float] = None
+    umidita_soglia_max: Optional[float] = None
+    durata_irrigazione_sec: Optional[int] = None
+    irrigazione_auto: Optional[bool] = None
 
 
 class PumpCmd(BaseModel):
@@ -42,8 +47,13 @@ class ZonaOut(BaseModel):
     id: int
     numero_zona: int
     nome: Optional[str]
+    descrizione_coltura: Optional[str] = None
     pianta_id: Optional[int]
     attiva: bool
+    umidita_soglia_min: Optional[float] = None
+    umidita_soglia_max: Optional[float] = None
+    durata_irrigazione_sec: Optional[int] = None
+    irrigazione_auto: bool = True
     ultima_umidita: Optional[float] = None
     ultima_lettura_ts: Optional[datetime] = None
     pompa_on: bool = False
@@ -79,18 +89,33 @@ class TankOut(BaseModel):
 
 # ---------- Helpers ----------
 
+def _is_pump_on(zona_id: int) -> bool:
+    state = pump_state.get(zona_id, {})
+    if not state.get("on"):
+        return False
+    # Auto-expire: if we passed expires_at the device has finished
+    expires_at = state.get("expires_at")
+    if expires_at and datetime.now(timezone.utc) > expires_at:
+        return False
+    return True
+
+
 def _build_zona_out(zona: Zona) -> ZonaOut:
     reading = latest_readings.get(zona.id, {})
-    state = pump_state.get(zona.id, {})
     return ZonaOut(
         id=zona.id,
         numero_zona=zona.numero_zona,
         nome=zona.nome,
+        descrizione_coltura=zona.descrizione_coltura,
         pianta_id=zona.pianta_id,
         attiva=zona.attiva,
+        umidita_soglia_min=zona.umidita_soglia_min,
+        umidita_soglia_max=zona.umidita_soglia_max,
+        durata_irrigazione_sec=zona.durata_irrigazione_sec,
+        irrigazione_auto=zona.irrigazione_auto,
         ultima_umidita=reading.get("umidita_pct"),
         ultima_lettura_ts=reading.get("ts"),
-        pompa_on=state.get("on", False),
+        pompa_on=_is_pump_on(zona.id),
     )
 
 
@@ -164,6 +189,9 @@ async def create_culla(
 
     await db.commit()
     await db.refresh(culla)
+    # Invalidate device cache so new culla/zones are visible to mqtt_client
+    from app.mqtt_client import _refresh_device_cache
+    await _refresh_device_cache()
     zone = await _load_zone(culla.id, db)
     return _build_culla_out(culla, zone)
 
@@ -243,7 +271,7 @@ async def update_zona(
     zona = result.scalar_one_or_none()
     if not zona:
         raise HTTPException(status_code=404, detail="Zona non trovata")
-    for field, value in body.model_dump(exclude_none=True).items():
+    for field, value in body.model_dump(exclude_unset=True).items():
         setattr(zona, field, value)
     await db.commit()
     await db.refresh(zona)
@@ -283,16 +311,26 @@ async def pump_command(
     device_id = culla.device_id or f"culla-{culla.id}"
     await publish_pump_cmd(client, device_id, numero_zona, body.cmd, body.sec)
 
+    # Keep pump_state in sync directly — publish_pump_cmd may miss it if device
+    # cache hasn't refreshed yet (e.g. culla created after last cache refresh).
+    now = datetime.now(timezone.utc)
     if body.cmd == "on":
+        pump_state[zona.id] = {
+            "on": True,
+            "since": now,
+            "expires_at": now + timedelta(seconds=body.sec + 5),
+        }
         db.add(
             Irrigazione(
                 zona_id=zona.id,
-                ts_inizio=datetime.now(timezone.utc),
+                ts_inizio=now,
                 umidita_pre=latest_readings.get(zona.id, {}).get("umidita_pct"),
                 trigger="manuale",
             )
         )
         await db.commit()
+    else:
+        pump_state[zona.id] = {"on": False, "since": None, "expires_at": None}
 
     return {"detail": f"Pompa culla {culla_id} zona {numero_zona} → {body.cmd}"}
 

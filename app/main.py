@@ -9,8 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, culle
 from app.api import license as license_api
+from app.api import messages as messages_api
 from app.database import AsyncSessionLocal, engine
 from app.licensing import heartbeat
+from app.messaging import sync_messages
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ _scheduler = AsyncIOScheduler()
 
 
 async def _irrigation_tick() -> None:
-    from app.models import Culla, Irrigazione, Pianta, Zona
+    from app.models import Culla, Irrigazione, Zona
     from app.mqtt_client import (
         get_client,
         latest_readings,
@@ -57,16 +59,13 @@ async def _irrigation_tick() -> None:
                 select(Zona).where(
                     Zona.culla_id == culla.id,
                     Zona.attiva == True,
-                    Zona.pianta_id.is_not(None),
+                    Zona.irrigazione_auto == True,
+                    Zona.umidita_soglia_min.is_not(None),
                 )
             )
             zone = zones_result.scalars().all()
 
             for zona in zone:
-                pianta = await db.get(Pianta, zona.pianta_id)
-                if not pianta:
-                    continue
-
                 reading = latest_readings.get(zona.id, {})
                 ts = reading.get("ts")
                 if not ts or (datetime.now(timezone.utc) - ts) > timedelta(minutes=5):
@@ -105,19 +104,19 @@ async def _irrigation_tick() -> None:
                         await db.commit()
                     continue
 
-                # Trigger irrigation
-                if umidita < pianta.umidita_min and not state.get("on"):
+                # Trigger irrigation when humidity drops below zone threshold
+                soglia = zona.umidita_soglia_min
+                durata = zona.durata_irrigazione_sec or 20
+                if umidita < soglia and not state.get("on"):
                     logger.info(
-                        "Culla %d zona %d: umidità %.1f < min %.1f → irrigazione",
+                        "Culla %d zona %d: umidità %.1f < soglia %.1f → irrigazione %ds",
                         culla.id,
                         zona.numero_zona,
                         umidita,
-                        pianta.umidita_min,
+                        soglia,
+                        durata,
                     )
-                    await publish_pump_cmd(
-                        client, device_id, zona.numero_zona, "on",
-                        pianta.durata_irrigazione_sec,
-                    )
+                    await publish_pump_cmd(client, device_id, zona.numero_zona, "on", durata)
                     db.add(
                         Irrigazione(
                             zona_id=zona.id,
@@ -137,6 +136,7 @@ async def lifespan(app: FastAPI):
 
     _scheduler.add_job(heartbeat, "interval", minutes=60, id="license_heartbeat")
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
+    _scheduler.add_job(sync_messages, "interval", minutes=15, id="messages_sync")
     _scheduler.start()
 
     logger.info("NestGrow backend avviato")
@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="NestGrow API",
-    version="0.2.0",
+    version="0.3.0",
     description="Sistema gestione culle di accrescimento vegetale — lake8.dev",
     lifespan=lifespan,
 )
@@ -170,8 +170,9 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(culle.router)
 app.include_router(license_api.router)
+app.include_router(messages_api.router)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "nestgrow-backend", "version": "0.2.0"}
+    return {"status": "ok", "service": "nestgrow-backend", "version": "0.3.0"}

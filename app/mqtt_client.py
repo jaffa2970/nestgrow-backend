@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # In-memory sensor state keyed by zona.id (INT)
 latest_readings: dict[int, dict] = {}   # zona_id → {umidita_pct, ts}
 latest_tank: dict[str, dict] = {}        # device_id → {livello, ts}
-pump_state: dict[int, dict] = {}         # zona_id → {on: bool, since: datetime | None}
+pump_state: dict[int, dict] = {}         # zona_id → {on, since, expires_at}
 
 # Device→zone cache: device_id → {numero_zona → zona_id}
 _device_cache: dict[str, dict[int, int]] = {}
@@ -138,9 +138,12 @@ async def publish_pump_cmd(
     )
     zona_id = await _get_zona_id(device_id, numero_zona)
     if zona_id is not None:
+        now = datetime.now(timezone.utc)
         pump_state[zona_id] = {
             "on": cmd == "on",
-            "since": datetime.now(timezone.utc) if cmd == "on" else None,
+            "since": now if cmd == "on" else None,
+            # Add 5s grace period so the last reading can arrive
+            "expires_at": now + timedelta(seconds=sec + 5) if cmd == "on" else None,
         }
 
 
