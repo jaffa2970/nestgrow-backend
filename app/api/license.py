@@ -1,54 +1,181 @@
 from datetime import datetime, timezone
+from typing import Literal, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from pydantic import BaseModel, EmailStr, field_validator
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.core.config import settings
 from app.database import get_db
-from app.licensing import ensure_default_licenza, get_licenza, get_max_culle, heartbeat
-from app.models import Zona
+from app.licensing import PIANO_LIMITI_DEFAULT, get_licenza, get_max_culle
+from app.models import Culla, LicenzaCache
 
 router = APIRouter(prefix="/license", tags=["license"])
 
 
+# ---------- Schemas ----------
+
 class LicenzaOut(BaseModel):
-    piano: str
-    valida_fino: datetime
-    features: dict | None
-    aggiornato_il: datetime
-    culle_usate: int
-    culle_disponibili: int
+    registrato: bool
+    piano: Optional[str] = None
+    valida_fino: Optional[datetime] = None
+    features: Optional[dict] = None
+    aggiornato_il: Optional[datetime] = None
+    culle_usate: int = 0
+    culle_disponibili: int = 0
+    max_culle: int = 0
+    ragione_sociale: Optional[str] = None
+    piva: Optional[str] = None
+    email: Optional[str] = None
+
+
+class RegisterPayload(BaseModel):
+    ragione_sociale: str
+    piva: str
+    email: EmailStr
+    piano: Literal["free", "pro", "enterprise", "ultra"]
+    tos_accettato: bool
+
+    @field_validator("tos_accettato")
+    @classmethod
+    def must_accept(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("Devi accettare i Termini di Servizio")
+        return v
+
+    @field_validator("piva")
+    @classmethod
+    def validate_piva(cls, v: str) -> str:
+        v = v.strip().upper()
+        if len(v) == 11 and v.isdigit():
+            return v          # P.IVA
+        if len(v) == 16 and v.isalnum():
+            return v          # Codice Fiscale
+        raise ValueError(
+            "Inserisci una P.IVA valida (11 cifre) "
+            "o un Codice Fiscale valido (16 caratteri alfanumerici)"
+        )
 
 
 class ActivateBody(BaseModel):
     jwt_token: str
 
 
+# ---------- GET /license (requires auth) ----------
+
 @router.get("/", response_model=LicenzaOut)
 async def get_license_status(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    await ensure_default_licenza(db)
     licenza = await get_licenza(db)
-    max_culle = await get_max_culle(db)
+    if not licenza:
+        return LicenzaOut(registrato=False)
 
+    max_culle = await get_max_culle(db)
     count_result = await db.execute(
-        select(func.count()).select_from(Zona).where(Zona.attiva == True)
+        select(func.count()).select_from(Culla).where(Culla.attiva == True)
     )
     culle_usate = count_result.scalar_one()
 
     return LicenzaOut(
+        registrato=True,
         piano=licenza.piano,
         valida_fino=licenza.valida_fino,
         features=licenza.features or {},
         aggiornato_il=licenza.aggiornato_il,
         culle_usate=culle_usate,
         culle_disponibili=max(0, max_culle - culle_usate),
+        max_culle=max_culle,
+        ragione_sociale=licenza.ragione_sociale,
+        piva=licenza.piva,
+        email=licenza.email,
     )
 
+
+# ---------- POST /license/register (PUBLIC — no auth) ----------
+
+@router.post("/register")
+async def register_license(
+    payload: RegisterPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{settings.license_server_url}/api/v1/register",
+                json={
+                    "prodotto": "nestgrow",
+                    "ragione_sociale": payload.ragione_sociale,
+                    "piva": payload.piva,
+                    "email": str(payload.email),
+                    "piano": payload.piano,
+                    "tos_accettato": payload.tos_accettato,
+                },
+            )
+    except httpx.RequestError as exc:
+        if payload.piano == "free":
+            data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail=f"License Server non raggiungibile: {exc}",
+            )
+    else:
+        if resp.status_code not in (200, 201):
+            # Allow free plan to register offline even if license server fails
+            if payload.piano == "free":
+                data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
+            else:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        else:
+            data = resp.json()
+
+    valida_fino = datetime.fromisoformat(
+        data.get("valid_until", "2099-01-01T00:00:00")
+    )
+    piano = data.get("plan", payload.piano)
+
+    existing = await get_licenza(db)
+    if existing:
+        await db.execute(
+            update(LicenzaCache)
+            .where(LicenzaCache.id == 1)
+            .values(
+                piano=piano,
+                valida_fino=valida_fino,
+                features=data.get("features", {}),
+                aggiornato_il=datetime.now(timezone.utc),
+                ragione_sociale=payload.ragione_sociale,
+                piva=payload.piva,
+                email=str(payload.email),
+            )
+        )
+    else:
+        db.add(
+            LicenzaCache(
+                id=1,
+                piano=piano,
+                valida_fino=valida_fino,
+                features=data.get("features", {}),
+                ragione_sociale=payload.ragione_sociale,
+                piva=payload.piva,
+                email=str(payload.email),
+            )
+        )
+    await db.commit()
+
+    return {
+        "success": True,
+        "piano": piano,
+        "max_culle": PIANO_LIMITI_DEFAULT.get(piano, 1),
+    }
+
+
+# ---------- POST /license/activate (requires auth) ----------
 
 @router.post("/activate")
 async def activate_license(
@@ -56,6 +183,7 @@ async def activate_license(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
+    from app.licensing import heartbeat
     result = await heartbeat(jwt_token=body.jwt_token)
     if result is None:
         raise HTTPException(

@@ -35,7 +35,6 @@ async def get_max_culle(db: AsyncSession) -> int:
 
 
 async def heartbeat(jwt_token: str | None = None) -> dict | None:
-    """Calls the License Server heartbeat endpoint and updates licenza_cache."""
     from app.database import AsyncSessionLocal
 
     headers = {}
@@ -67,35 +66,9 @@ async def heartbeat(jwt_token: str | None = None) -> dict | None:
                                 aggiornato_il=datetime.now(timezone.utc),
                             )
                         )
-                    else:
-                        db.add(
-                            LicenzaCache(
-                                id=1,
-                                piano=data.get("plan", "free"),
-                                valida_fino=valida_fino,
-                                features=data.get("features", {}),
-                            )
-                        )
-                    await db.commit()
+                        await db.commit()
                 return data
-            else:
-                logger.warning("License heartbeat returned %d", resp.status_code)
+            logger.warning("License heartbeat returned %d", resp.status_code)
     except Exception as exc:
         logger.warning("License heartbeat failed: %s", exc)
     return None
-
-
-async def ensure_default_licenza(db: AsyncSession) -> None:
-    """Inserts a default free-plan licenza_cache row if none exists."""
-    existing = await get_licenza(db)
-    if not existing:
-        db.add(
-            LicenzaCache(
-                id=1,
-                piano="free",
-                valida_fino=datetime(2099, 1, 1, tzinfo=timezone.utc),
-                features={},
-            )
-        )
-        await db.commit()
-        logger.info("Inserted default free licenza_cache")
