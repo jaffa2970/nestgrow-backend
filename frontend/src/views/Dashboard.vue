@@ -239,36 +239,34 @@
           </label>
         </div>
 
-        <template v-if="zoneForm.irrigazione_auto">
-          <div class="field">
-            <label>
-              Irrigazione automatica sotto il
-              <strong>{{ zoneForm.umidita_soglia_min }}%</strong> di umidità
-            </label>
-            <input v-model.number="zoneForm.umidita_soglia_min" type="range"
-              min="0" max="100" step="1" class="range-input" />
-            <div class="range-ticks"><span>0%</span><span>50%</span><span>100%</span></div>
-          </div>
+        <div class="field">
+          <label>
+            Soglia irrigazione:
+            <strong>{{ zoneForm.umidita_soglia_min }}%</strong> di umidità
+          </label>
+          <input v-model.number="zoneForm.umidita_soglia_min" type="range"
+            min="0" max="100" step="1" class="range-input" />
+          <div class="range-ticks"><span>0%</span><span>50%</span><span>100%</span></div>
+        </div>
 
-          <div class="field">
-            <label>
-              Obiettivo umidità:
-              <strong>{{ zoneForm.umidita_soglia_max }}%</strong>
-            </label>
-            <input v-model.number="zoneForm.umidita_soglia_max" type="range"
-              min="0" max="100" step="1" class="range-input" />
-            <div class="range-ticks"><span>0%</span><span>50%</span><span>100%</span></div>
-          </div>
+        <div class="field">
+          <label>
+            Obiettivo umidità:
+            <strong>{{ zoneForm.umidita_soglia_max }}%</strong>
+          </label>
+          <input v-model.number="zoneForm.umidita_soglia_max" type="range"
+            min="0" max="100" step="1" class="range-input" />
+          <div class="range-ticks"><span>0%</span><span>50%</span><span>100%</span></div>
+        </div>
 
-          <div class="field">
-            <label>
-              Durata ogni ciclo di irrigazione:
-              <strong>{{ zoneForm.durata_irrigazione_sec }} secondi</strong>
-            </label>
-            <input v-model.number="zoneForm.durata_irrigazione_sec" type="number"
-              min="1" max="300" class="input-small" />
-          </div>
-        </template>
+        <div class="field">
+          <label>
+            Durata ogni ciclo di irrigazione:
+            <strong>{{ zoneForm.durata_irrigazione_sec }} secondi</strong>
+          </label>
+          <input v-model.number="zoneForm.durata_irrigazione_sec" type="number"
+            min="1" max="300" class="input-small" />
+        </div>
 
         <p v-if="zoneError" class="alert-error small">{{ zoneError }}</p>
 
@@ -414,9 +412,9 @@ async function saveZoneConfig() {
     nome: zoneForm.value.nome || null,
     descrizione_coltura: zoneForm.value.descrizione_coltura || null,
     irrigazione_auto: zoneForm.value.irrigazione_auto,
-    umidita_soglia_min: zoneForm.value.irrigazione_auto ? zoneForm.value.umidita_soglia_min : null,
-    umidita_soglia_max: zoneForm.value.irrigazione_auto ? zoneForm.value.umidita_soglia_max : null,
-    durata_irrigazione_sec: zoneForm.value.irrigazione_auto ? zoneForm.value.durata_irrigazione_sec : null,
+    umidita_soglia_min: zoneForm.value.umidita_soglia_min,
+    umidita_soglia_max: zoneForm.value.umidita_soglia_max,
+    durata_irrigazione_sec: zoneForm.value.durata_irrigazione_sec,
   }
 
   try {
@@ -764,7 +762,7 @@ onUnmounted(() => {
   border: 1.5px solid #ddd; cursor: pointer; font-size: 0.9rem;
   background: white;
 }
-.btn-primary { background: #1f5c2e; color: white; border-color: #1f5c2e; font-weight: 600; }
-.btn-primary:hover:not(:disabled) { background: #2d8048; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-actions .btn-primary { background: #1f5c2e; color: white; border-color: #1f5c2e; font-weight: 600; }
+.modal-actions .btn-primary:hover:not(:disabled) { background: #2d8048; }
+.modal-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
