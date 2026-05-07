@@ -41,9 +41,9 @@
               :class="{
                 selected: form.piano === p.id,
                 current: isUpgrade && p.id === currentPiano,
-                disabled: isUpgrade && p.id === currentPiano,
+                disabled: p.contact || (isUpgrade && p.id === currentPiano),
               }"
-              @click="isUpgrade && p.id === currentPiano ? null : (form.piano = p.id)"
+              @click="!p.contact && !(isUpgrade && p.id === currentPiano) ? (form.piano = p.id) : null"
             >
               <div class="plan-name">{{ p.name }}</div>
               <div class="plan-price">{{ p.price }}</div>
@@ -55,9 +55,12 @@
                 type="button"
                 class="plan-btn"
                 :class="{ active: form.piano === p.id }"
-                :disabled="isUpgrade && p.id === currentPiano"
+                :disabled="p.contact || (isUpgrade && p.id === currentPiano)"
               >
-                {{ isUpgrade && p.id === currentPiano ? 'Attivo' : form.piano === p.id ? '✓ Selezionato' : 'Seleziona' }}
+                <template v-if="p.contact">Contattaci</template>
+                <template v-else-if="isUpgrade && p.id === currentPiano">Attivo</template>
+                <template v-else-if="form.piano === p.id">✓ Selezionato</template>
+                <template v-else>Seleziona</template>
               </button>
             </div>
           </div>
@@ -117,11 +120,12 @@ const form = ref({
   tos_accettato: false,
 })
 
+// enterprise maps to the "ai" plan on the License Server (10 culle)
 const plans = [
-  { id: 'free',       name: 'Free',       price: '€0/mese',    culle: '1 culla' },
-  { id: 'pro',        name: 'Pro',        price: '€29/mese',   culle: '5 culle' },
-  { id: 'enterprise', name: 'Enterprise', price: '€99/mese',   culle: '20 culle' },
-  { id: 'ultra',      name: 'Ultra',      price: 'Su misura',  culle: 'Illimitato' },
+  { id: 'free',       name: 'Free',       price: '€0/mese',   culle: '1 culla',   contact: false },
+  { id: 'pro',        name: 'Pro',        price: '€29/mese',  culle: '5 culle',   contact: false },
+  { id: 'enterprise', name: 'Enterprise', price: '€99/mese',  culle: '10 culle',  contact: false },
+  { id: 'ultra',      name: 'Ultra',      price: 'Su misura', culle: 'Illimitato', contact: true },
 ]
 
 onMounted(async () => {

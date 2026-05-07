@@ -36,7 +36,7 @@ class RegisterPayload(BaseModel):
     ragione_sociale: str
     piva: str
     email: EmailStr
-    piano: Literal["free", "pro", "enterprise", "ultra"]
+    piano: Literal["free", "pro", "enterprise", "ultra", "ai"]
     tos_accettato: bool
 
     @field_validator("tos_accettato")
@@ -103,6 +103,10 @@ async def register_license(
     payload: RegisterPayload,
     db: AsyncSession = Depends(get_db),
 ):
+    # enterprise and ultra both map to the "ai" plan on the License Server
+    _PIANO_MAP = {"enterprise": "ai", "ultra": "ai"}
+    piano_server = _PIANO_MAP.get(payload.piano, payload.piano)
+
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
@@ -112,12 +116,12 @@ async def register_license(
                     "ragione_sociale": payload.ragione_sociale,
                     "piva": payload.piva,
                     "email": str(payload.email),
-                    "piano": payload.piano,
+                    "piano": piano_server,
                     "tos_accettato": payload.tos_accettato,
                 },
             )
     except httpx.RequestError as exc:
-        if payload.piano == "free":
+        if piano_server == "free":
             data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
         else:
             raise HTTPException(
@@ -126,8 +130,7 @@ async def register_license(
             )
     else:
         if resp.status_code not in (200, 201):
-            # Allow free plan to register offline even if license server fails
-            if payload.piano == "free":
+            if piano_server == "free":
                 data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
             else:
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)

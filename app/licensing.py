@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 PIANO_LIMITI_DEFAULT = {
     "free": 1,
     "pro": 5,
-    "enterprise": 20,
-    "ultra": 9999,
+    "ai": 10,
 }
 
 

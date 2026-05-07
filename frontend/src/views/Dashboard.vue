@@ -646,6 +646,7 @@ onUnmounted(() => {
 }
 .plan-badge.free { background: #e8f5e9; color: #2e7d32; }
 .plan-badge.pro { background: #e3f2fd; color: #1565c0; }
+.plan-badge.ai { background: #f3e5f5; color: #6a1b9a; }
 .plan-badge.enterprise { background: #f3e5f5; color: #6a1b9a; }
 .plan-badge.ultra { background: #fff8e1; color: #e65100; }
 
