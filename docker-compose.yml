@@ -18,7 +18,7 @@ services:
       MARIADB_USER: nestgrow
       MARIADB_PASSWORD: nestgrow
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -54,7 +54,7 @@ services:
       dockerfile: Dockerfile
     container_name: nestgrow-frontend
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - backend
     restart: unless-stopped

@@ -65,7 +65,7 @@ class Lettura(Base):
     __table_args__ = (Index("idx_ts_zona", "ts", "zona_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(fsp=3), nullable=False, server_default=func.now(3))
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     zona_id: Mapped[int] = mapped_column(Integer, ForeignKey("zone.id"), nullable=False)
     umidita_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     livello_serbatoio_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -78,8 +78,8 @@ class Irrigazione(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     zona_id: Mapped[int] = mapped_column(Integer, ForeignKey("zone.id"), nullable=False)
-    ts_inizio: Mapped[datetime] = mapped_column(DateTime(fsp=3), nullable=False)
-    ts_fine: Mapped[Optional[datetime]] = mapped_column(DateTime(fsp=3), nullable=True)
+    ts_inizio: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ts_fine: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     durata_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     umidita_pre: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     umidita_post: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

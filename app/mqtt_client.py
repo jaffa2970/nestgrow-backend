@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from asyncio_mqtt import Client, MqttError
+from aiomqtt import Client, MqttError
 
 from app.core.config import settings
 
@@ -90,13 +90,12 @@ async def mqtt_loop(stop_event: asyncio.Event) -> None:
 
                 await client.subscribe("nestgrow/#")
                 logger.info("MQTT connected to %s:%d", settings.mqtt_host, settings.mqtt_port)
-                async with client.messages() as messages:
-                    async for message in messages:
-                        if stop_event.is_set():
-                            break
-                        asyncio.create_task(
-                            _dispatch(str(message.topic), message.payload)
-                        )
+                async for message in client.messages:
+                    if stop_event.is_set():
+                        break
+                    asyncio.create_task(
+                        _dispatch(str(message.topic), message.payload)
+                    )
         except MqttError as exc:
             if stop_event.is_set():
                 break
