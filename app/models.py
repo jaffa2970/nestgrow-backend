@@ -135,7 +135,7 @@ class LicenzaCache(Base):
     ragione_sociale: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     piva: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    jwt_token: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    jwt_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class MessaggioCache(Base):

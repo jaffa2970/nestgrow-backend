@@ -155,6 +155,11 @@
             <span class="license-label">Email</span>
             <span>{{ license.email }}</span>
           </div>
+          <div class="license-row">
+            <span class="license-label">Stato attivazione</span>
+            <span v-if="license.jwt_attivo" class="jwt-badge active">✓ Attiva</span>
+            <span v-else class="jwt-badge pending">⏳ In approvazione</span>
+          </div>
           <div class="license-actions">
             <button class="btn-upgrade-full" @click="$router.push('/register?upgrade=true')">
               🔄 Aggiorna piano
@@ -197,12 +202,18 @@
     <div v-if="tab === 'supporto'" class="support-section">
       <div class="section-header">
         <h2>Supporto tecnico</h2>
-        <button class="btn-add" @click="showTicketModal = true">+ Nuovo ticket</button>
+        <button class="btn-add" @click="showTicketModal = true" :disabled="jwtPending">+ Nuovo ticket</button>
       </div>
 
       <div v-if="supportError" class="alert-error">{{ supportError }}</div>
 
-      <div v-if="tickets.length === 0 && !supportError" class="empty-state">
+      <div v-if="jwtPending" class="jwt-pending-banner">
+        ⏳ La licenza è in attesa di approvazione da lake8.dev.
+        Il supporto sarà disponibile non appena la licenza sarà attivata (di solito entro 24 ore).
+        <button class="btn-check-jwt" @click="checkJwt">Controlla stato</button>
+      </div>
+
+      <div v-if="!jwtPending && tickets.length === 0 && !supportError" class="empty-state">
         Nessun ticket aperto. Crea il primo per richiedere assistenza.
       </div>
 
@@ -569,12 +580,16 @@ function formatDate(dt) {
   })
 }
 
+const jwtPending = ref(false)
+
 async function openSupporto() {
   tab.value = 'supporto'
   supportError.value = ''
+  jwtPending.value = false
   try {
     const { data } = await axios.get('/support/tickets')
-    tickets.value = Array.isArray(data) ? data : (data.tickets || [])
+    jwtPending.value = data.jwt_pending === true
+    tickets.value = data.tickets || []
   } catch (e) {
     supportError.value = e.response?.data?.detail || 'Errore caricamento ticket'
   }
@@ -585,6 +600,19 @@ function toggleTicket(t) {
     expandedTicket.value = null
   } else {
     expandedTicket.value = t.id
+  }
+}
+
+async function checkJwt() {
+  try {
+    const { data } = await axios.get('/license/check-pending')
+    if (data.jwt_attivo) {
+      await openSupporto()
+    } else {
+      supportError.value = 'Licenza non ancora approvata. Riprova tra qualche minuto.'
+    }
+  } catch (e) {
+    supportError.value = e.response?.data?.detail || 'Errore verifica stato'
   }
 }
 
@@ -783,6 +811,10 @@ onUnmounted(() => {
 .progress-fill.full { background: #e53935; }
 .progress-text { font-size: 0.85rem; font-weight: 600; color: #333; white-space: nowrap; }
 
+.jwt-badge { padding: 3px 12px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; }
+.jwt-badge.active { background: #e8f5e9; color: #2e7d32; }
+.jwt-badge.pending { background: #fff8e1; color: #e65100; }
+
 .license-actions { padding-top: 16px; }
 .btn-upgrade-full {
   background: #1f5c2e; color: white; border: none;
@@ -902,6 +934,19 @@ onUnmounted(() => {
 .modal-actions .btn-primary { background: #1f5c2e; color: white; border-color: #1f5c2e; font-weight: 600; }
 .modal-actions .btn-primary:hover:not(:disabled) { background: #2d8048; }
 .modal-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.jwt-pending-banner {
+  background: #fff8e1; border: 1.5px solid #fbc02d;
+  border-radius: 10px; padding: 14px 16px;
+  font-size: 0.88rem; color: #664d03; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.btn-check-jwt {
+  background: #fbc02d; border: none; padding: 6px 14px;
+  border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 700;
+  color: #333; white-space: nowrap;
+}
+.btn-check-jwt:hover { background: #f9a825; }
 
 /* Support section */
 .support-section { padding: 0 24px 24px; }

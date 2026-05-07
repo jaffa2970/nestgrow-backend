@@ -12,7 +12,7 @@ from app.api import license as license_api
 from app.api import messages as messages_api
 from app.api import support as support_api
 from app.database import AsyncSessionLocal, engine
-from app.licensing import heartbeat
+from app.licensing import heartbeat, poll_pending_jwt
 from app.messaging import sync_messages
 
 logging.basicConfig(level=logging.INFO)
@@ -136,6 +136,7 @@ async def lifespan(app: FastAPI):
     mqtt_task = asyncio.create_task(mqtt_mod.mqtt_loop(_mqtt_stop))
 
     _scheduler.add_job(heartbeat, "interval", minutes=60, id="license_heartbeat")
+    _scheduler.add_job(poll_pending_jwt, "interval", minutes=5, id="jwt_poll")
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
     _scheduler.add_job(sync_messages, "interval", minutes=15, id="messages_sync")
     _scheduler.start()

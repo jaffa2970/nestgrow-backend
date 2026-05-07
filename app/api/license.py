@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
@@ -10,9 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.core.config import settings
 from app.database import get_db
-from app.licensing import PIANO_LIMITI_DEFAULT, get_licenza, get_max_culle
+from app.licensing import (
+    MACHINE_ID,
+    PIANO_LIMITI_DEFAULT,
+    _decode_jwt_payload,
+    get_licenza,
+    get_max_culle,
+    poll_pending_jwt_once,
+)
 from app.models import Culla, LicenzaCache
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/license", tags=["license"])
 
 
@@ -30,6 +39,7 @@ class LicenzaOut(BaseModel):
     ragione_sociale: Optional[str] = None
     piva: Optional[str] = None
     email: Optional[str] = None
+    jwt_attivo: bool = False
 
 
 class RegisterPayload(BaseModel):
@@ -93,6 +103,7 @@ async def get_license_status(
         ragione_sociale=licenza.ragione_sociale,
         piva=licenza.piva,
         email=licenza.email,
+        jwt_attivo=bool(licenza.jwt_token),
     )
 
 
@@ -103,10 +114,11 @@ async def register_license(
     payload: RegisterPayload,
     db: AsyncSession = Depends(get_db),
 ):
-    # enterprise and ultra both map to the "ai" plan on the License Server
     _PIANO_MAP = {"enterprise": "ai", "ultra": "ai"}
     piano_server = _PIANO_MAP.get(payload.piano, payload.piano)
 
+    # ── Step 1: try License Server registration ──────────────────────────────
+    server_ok = False
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
@@ -119,70 +131,93 @@ async def register_license(
                     "nome": "",
                     "cognome": "",
                     "piano": piano_server,
-                    "machine_id": "nestgrow-server",
+                    "machine_id": MACHINE_ID,
                     "version": "0.3.0",
                 },
             )
-    except httpx.RequestError as exc:
-        if piano_server == "free":
-            data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
+        if resp.status_code in (200, 201):
+            server_ok = True
+            logger.info("Registrazione OK sul License Server (piano=%s)", piano_server)
+        elif resp.status_code == 409:
+            # Already registered — still try JWT polling (might be pending)
+            server_ok = True
+            logger.info("Registrazione già presente sul License Server — polling JWT")
+        elif piano_server != "free":
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
         else:
+            logger.warning(
+                "License Server ha rifiutato la registrazione free (%d): %s",
+                resp.status_code, resp.text[:200],
+            )
+    except httpx.RequestError as exc:
+        if piano_server != "free":
             raise HTTPException(
                 status_code=502,
                 detail=f"License Server non raggiungibile: {exc}",
             )
-    else:
-        if resp.status_code not in (200, 201):
-            if piano_server == "free":
-                data = {"plan": "free", "valid_until": "2099-01-01T00:00:00", "features": {}}
-            else:
-                raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        else:
-            data = resp.json()
+        logger.warning("License Server non raggiungibile (offline fallback): %s", exc)
 
-    valida_fino = datetime.fromisoformat(
-        data.get("valid_until", "2099-01-01T00:00:00")
-    )
-    piano = data.get("plan", payload.piano)
+    # ── Step 2: try to collect JWT immediately ───────────────────────────────
+    jwt_token: str | None = None
+    piano = piano_server
+    valida_fino = datetime.fromisoformat("2099-01-01T00:00:00")
 
-    jwt_token = data.get("jwt_token") or data.get("token")
-
-    existing = await get_licenza(db)
-    if existing:
-        values = dict(
-            piano=piano,
-            valida_fino=valida_fino,
-            features=data.get("features", {}),
-            aggiornato_il=datetime.now(timezone.utc),
-            ragione_sociale=payload.ragione_sociale,
-            piva=payload.piva,
-            email=str(payload.email),
-        )
+    if server_ok:
+        jwt_token = await poll_pending_jwt_once()
         if jwt_token:
-            values["jwt_token"] = jwt_token
+            jwt_payload = _decode_jwt_payload(jwt_token)
+            piano = jwt_payload.get("piano", piano_server)
+            exp = jwt_payload.get("exp")
+            if exp:
+                valida_fino = datetime.fromtimestamp(exp, tz=timezone.utc)
+
+    # ── Step 3: save / update licenza_cache ──────────────────────────────────
+    existing = await get_licenza(db)
+    base_values = dict(
+        piano=piano,
+        valida_fino=valida_fino,
+        features={},
+        aggiornato_il=datetime.now(timezone.utc),
+        ragione_sociale=payload.ragione_sociale,
+        piva=payload.piva,
+        email=str(payload.email),
+    )
+    if jwt_token:
+        base_values["jwt_token"] = jwt_token
+
+    if existing:
         await db.execute(
-            update(LicenzaCache).where(LicenzaCache.id == 1).values(**values)
+            update(LicenzaCache).where(LicenzaCache.id == 1).values(**base_values)
         )
     else:
-        db.add(
-            LicenzaCache(
-                id=1,
-                piano=piano,
-                valida_fino=valida_fino,
-                features=data.get("features", {}),
-                ragione_sociale=payload.ragione_sociale,
-                piva=payload.piva,
-                email=str(payload.email),
-                jwt_token=jwt_token,
-            )
-        )
+        db.add(LicenzaCache(id=1, **base_values))
     await db.commit()
+
+    pending_approval = server_ok and jwt_token is None
+    if pending_approval:
+        logger.info("JWT non ancora disponibile — il background job riproverà ogni 5 min")
 
     return {
         "success": True,
         "piano": piano,
         "max_culle": PIANO_LIMITI_DEFAULT.get(piano, 1),
+        "jwt_attivo": jwt_token is not None,
+        "pending_approval": pending_approval,
     }
+
+
+# ---------- GET /license/check-pending (requires auth) ──────────────────────
+
+@router.get("/check-pending")
+async def check_pending(
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    """Manually trigger a JWT poll. Respects the server's 60s rate limit."""
+    from app.licensing import poll_pending_jwt
+    await poll_pending_jwt()
+    licenza = await get_licenza(db)
+    return {"jwt_attivo": bool(licenza and licenza.jwt_token)}
 
 
 # ---------- POST /license/activate (requires auth) ----------

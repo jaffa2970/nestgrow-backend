@@ -33,7 +33,8 @@ async def list_tickets(
 ):
     licenza = await _get_licenza_or_fail(db)
     if not licenza.jwt_token:
-        raise HTTPException(status_code=400, detail="JWT non disponibile — completa la registrazione")
+        # JWT not yet delivered by admin — return empty list with pending flag
+        return {"jwt_pending": True, "tickets": []}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
@@ -44,7 +45,10 @@ async def list_tickets(
         raise HTTPException(status_code=502, detail=f"License Server non raggiungibile: {exc}")
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    return resp.json()
+    data = resp.json()
+    # Normalise: server may return a list or {"tickets": [...]}
+    tickets = data if isinstance(data, list) else data.get("tickets", data)
+    return {"jwt_pending": False, "tickets": tickets}
 
 
 @router.post("/tickets")
@@ -55,7 +59,10 @@ async def create_ticket(
 ):
     licenza = await _get_licenza_or_fail(db)
     if not licenza.jwt_token:
-        raise HTTPException(status_code=400, detail="JWT non disponibile — completa la registrazione")
+        raise HTTPException(
+            status_code=400,
+            detail="Attivazione in corso — la licenza non è ancora stata approvata. Riprova tra qualche minuto.",
+        )
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(

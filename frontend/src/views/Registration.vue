@@ -85,9 +85,24 @@
           class="submit-btn"
           :disabled="loading || (!isUpgrade && !form.tos_accettato)"
         >
-          <span v-if="loading">⏳ Attivazione in corso...</span>
+          <span v-if="loading">⏳ {{ loadingMsg }}</span>
           <span v-else>{{ isUpgrade ? '🔄 Aggiorna piano' : '🌱 Attiva NestGrow' }}</span>
         </button>
+
+        <div v-if="loading" class="loading-detail">
+          <div class="loading-steps">
+            <span :class="{ active: loadingStep >= 1 }">Verifica dati</span>
+            <span class="sep">→</span>
+            <span :class="{ active: loadingStep >= 2 }">Registrazione</span>
+            <span class="sep">→</span>
+            <span :class="{ active: loadingStep >= 3 }">Attesa JWT</span>
+          </div>
+        </div>
+
+        <div v-if="pendingApproval" class="pending-banner">
+          ⏳ Registrazione inviata! La licenza sarà attivata entro 24 ore da lake8.dev.<br>
+          Puoi già accedere con il piano Free — il supporto si abiliterà dopo l'approvazione.
+        </div>
 
         <div v-if="isUpgrade" class="back-link">
           <a href="#" @click.prevent="$router.back()">← Torna alla dashboard</a>
@@ -98,7 +113,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 
@@ -108,8 +123,12 @@ const route = useRoute()
 const isUpgrade = computed(() => route.query.upgrade === 'true')
 const currentPiano = ref('')
 const loading = ref(false)
+const loadingMsg = ref('Attivazione in corso...')
+const loadingStep = ref(0)
+const pendingApproval = ref(false)
 const error = ref('')
 const pivaError = ref('')
+let loadingTimer = null
 
 const form = ref({
   ragione_sociale: '',
@@ -164,14 +183,32 @@ async function handleSubmit() {
   }
 
   loading.value = true
+  loadingStep.value = 1
+  loadingMsg.value = 'Verifica dati...'
+  pendingApproval.value = false
+
+  // Animate loading steps
+  loadingTimer = setTimeout(() => {
+    loadingStep.value = 2
+    loadingMsg.value = 'Registrazione in corso...'
+  }, 800)
+  const t2 = setTimeout(() => {
+    loadingStep.value = 3
+    loadingMsg.value = 'Attesa conferma JWT...'
+  }, 2500)
+
   try {
-    await axios.post('/license/register', {
+    const { data } = await axios.post('/license/register', {
       ...form.value,
       tos_accettato: isUpgrade.value ? true : form.value.tos_accettato,
-    })
+    }, { timeout: 30000 })
 
     if (isUpgrade.value) {
       router.push('/')
+    } else if (data.pending_approval) {
+      pendingApproval.value = true
+      // Redirect after 4 seconds so user can read the message
+      setTimeout(() => router.push('/login'), 4000)
     } else {
       router.push('/login')
     }
@@ -183,9 +220,16 @@ async function handleSubmit() {
       error.value = detail || 'Errore durante la registrazione'
     }
   } finally {
+    clearTimeout(loadingTimer)
+    clearTimeout(t2)
     loading.value = false
+    loadingStep.value = 0
   }
 }
+
+onUnmounted(() => {
+  if (loadingTimer) clearTimeout(loadingTimer)
+})
 </script>
 
 <style scoped>
@@ -288,6 +332,22 @@ async function handleSubmit() {
 }
 .submit-btn:hover:not(:disabled) { background: #2d8048; }
 .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.loading-detail { margin-top: 10px; text-align: center; }
+.loading-steps {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; color: #888;
+}
+.loading-steps span { opacity: 0.4; transition: opacity 0.3s; }
+.loading-steps span.active { opacity: 1; color: #1f5c2e; font-weight: 600; }
+.loading-steps .sep { opacity: 0.3; }
+
+.pending-banner {
+  background: #e8f5e9; border: 1.5px solid #2d8048;
+  border-radius: 10px; padding: 14px 16px;
+  font-size: 0.88rem; color: #1b5e20; margin-top: 12px;
+  line-height: 1.6; text-align: center;
+}
 
 .back-link { text-align: center; margin-top: 16px; font-size: 0.88rem; }
 .back-link a { color: #555; text-decoration: none; }
