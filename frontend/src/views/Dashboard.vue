@@ -489,7 +489,7 @@ function msgIcon(tipo) {
 onMounted(() => {
   load()
   loadMessages()
-  pollInterval = setInterval(load, 10000)
+  pollInterval = setInterval(load, 30000)
 })
 onUnmounted(() => {
   clearInterval(pollInterval)

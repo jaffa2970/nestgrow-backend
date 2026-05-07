@@ -100,8 +100,36 @@ def _is_pump_on(zona_id: int) -> bool:
     return True
 
 
-def _build_zona_out(zona: Zona) -> ZonaOut:
-    reading = latest_readings.get(zona.id, {})
+async def _get_latest_db_readings(
+    db: AsyncSession, zone_ids: list[int]
+) -> dict[int, dict]:
+    """Query letture for the most recent row per zona_id (single round-trip)."""
+    if not zone_ids:
+        return {}
+    subq = (
+        select(Lettura.zona_id, func.max(Lettura.ts).label("max_ts"))
+        .where(Lettura.zona_id.in_(zone_ids))
+        .group_by(Lettura.zona_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(Lettura).join(
+            subq,
+            (Lettura.zona_id == subq.c.zona_id) & (Lettura.ts == subq.c.max_ts),
+        )
+    )
+    result: dict[int, dict] = {}
+    for row in rows.scalars().all():
+        result[row.zona_id] = {
+            "umidita_pct": row.umidita_pct,
+            "ts": row.ts,
+        }
+    return result
+
+
+def _build_zona_out(zona: Zona, db_reading: dict | None = None) -> ZonaOut:
+    # In-memory (live MQTT) takes priority; fall back to latest DB row
+    reading = latest_readings.get(zona.id) or db_reading or {}
     return ZonaOut(
         id=zona.id,
         numero_zona=zona.numero_zona,
@@ -126,14 +154,16 @@ async def _load_zone(culla_id: int, db: AsyncSession) -> list[Zona]:
     return result.scalars().all()
 
 
-def _build_culla_out(culla: Culla, zone: list[Zona]) -> CullaOut:
+def _build_culla_out(
+    culla: Culla, zone: list[Zona], db_readings: dict[int, dict] | None = None
+) -> CullaOut:
     return CullaOut(
         id=culla.id,
         nome=culla.nome,
         device_id=culla.device_id,
         attiva=culla.attiva,
         creato_il=culla.creato_il,
-        zone=[_build_zona_out(z) for z in zone],
+        zone=[_build_zona_out(z, (db_readings or {}).get(z.id)) for z in zone],
     )
 
 
@@ -148,11 +178,12 @@ async def list_culle(
         select(Culla).where(Culla.attiva == True).order_by(Culla.id)
     )
     culle = result.scalars().all()
-    out = []
+    zones_map: dict[int, list[Zona]] = {}
     for c in culle:
-        zone = await _load_zone(c.id, db)
-        out.append(_build_culla_out(c, zone))
-    return out
+        zones_map[c.id] = await _load_zone(c.id, db)
+    all_zone_ids = [z.id for zones in zones_map.values() for z in zones]
+    db_readings = await _get_latest_db_readings(db, all_zone_ids)
+    return [_build_culla_out(c, zones_map[c.id], db_readings) for c in culle]
 
 
 @router.post("/", response_model=CullaOut, status_code=status.HTTP_201_CREATED)
@@ -193,7 +224,8 @@ async def create_culla(
     from app.mqtt_client import _refresh_device_cache
     await _refresh_device_cache()
     zone = await _load_zone(culla.id, db)
-    return _build_culla_out(culla, zone)
+    # No DB readings for a brand-new culla — pass empty dict
+    return _build_culla_out(culla, zone, {})
 
 
 @router.get("/{culla_id}", response_model=CullaOut)
@@ -206,7 +238,8 @@ async def get_culla(
     if not culla:
         raise HTTPException(status_code=404, detail="Culla non trovata")
     zone = await _load_zone(culla_id, db)
-    return _build_culla_out(culla, zone)
+    db_readings = await _get_latest_db_readings(db, [z.id for z in zone])
+    return _build_culla_out(culla, zone, db_readings)
 
 
 @router.put("/{culla_id}", response_model=CullaOut)
@@ -224,7 +257,8 @@ async def update_culla(
     await db.commit()
     await db.refresh(culla)
     zone = await _load_zone(culla_id, db)
-    return _build_culla_out(culla, zone)
+    db_readings = await _get_latest_db_readings(db, [z.id for z in zone])
+    return _build_culla_out(culla, zone, db_readings)
 
 
 @router.delete("/{culla_id}")
@@ -252,7 +286,8 @@ async def get_zone_culla(
     if not await db.get(Culla, culla_id):
         raise HTTPException(status_code=404, detail="Culla non trovata")
     zone = await _load_zone(culla_id, db)
-    return [_build_zona_out(z) for z in zone]
+    db_readings = await _get_latest_db_readings(db, [z.id for z in zone])
+    return [_build_zona_out(z, db_readings.get(z.id)) for z in zone]
 
 
 @router.put("/{culla_id}/zone/{numero_zona}", response_model=ZonaOut)
