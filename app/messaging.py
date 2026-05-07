@@ -19,11 +19,15 @@ async def sync_messages() -> None:
         if not licenza or not licenza.piva:
             return
 
+        headers = {}
+        if licenza.jwt_token:
+            headers["Authorization"] = f"Bearer {licenza.jwt_token}"
+
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
-                    f"{settings.license_server_url}/api/v1/messages",
-                    params={"prodotto": "NESTGROW", "piva": licenza.piva},
+                    f"{settings.license_server_url}/notifications",
+                    headers=headers,
                 )
                 if resp.status_code != 200:
                     logger.debug("Messages sync: server returned %d", resp.status_code)
@@ -33,17 +37,29 @@ async def sync_messages() -> None:
             logger.debug("Messages sync failed: %s", exc)
             return
 
+        if not isinstance(messages, list):
+            logger.debug("Messages sync: unexpected response format")
+            return
+
         new_count = 0
         for m in messages:
-            existing = await db.get(MessaggioCache, m["id"])
+            msg_id = str(m.get("id", ""))
+            if not msg_id:
+                continue
+            existing = await db.get(MessaggioCache, msg_id)
             if not existing:
+                data_raw = m.get("data_creazione") or m.get("data")
+                try:
+                    data_msg = datetime.fromisoformat(str(data_raw)) if data_raw else datetime.utcnow()
+                except ValueError:
+                    data_msg = datetime.utcnow()
                 db.add(
                     MessaggioCache(
-                        id=m["id"],
+                        id=msg_id,
                         tipo=m.get("tipo", "info"),
-                        titolo=m["titolo"],
-                        corpo=m["corpo"],
-                        data_msg=datetime.fromisoformat(m["data"]),
+                        titolo=m.get("titolo", ""),
+                        corpo=m.get("corpo") or "",
+                        data_msg=data_msg,
                         letto=m.get("letto", False),
                     )
                 )
@@ -53,7 +69,6 @@ async def sync_messages() -> None:
             await db.commit()
             logger.info("Messages sync: %d nuovi messaggi salvati", new_count)
 
-        # Warn on unread criticals
         result = await db.execute(
             select(MessaggioCache).where(
                 MessaggioCache.letto == False,

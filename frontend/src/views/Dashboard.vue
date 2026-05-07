@@ -27,6 +27,7 @@
         📬 Messaggi
         <span v-if="unreadCount > 0" class="badge">{{ unreadCount }}</span>
       </button>
+      <button :class="{ active: tab === 'supporto' }" @click="openSupporto">🎫 Supporto</button>
     </div>
 
     <!-- ===== TAB CULLE ===== -->
@@ -192,6 +193,47 @@
       </div>
     </div>
 
+    <!-- ===== TAB SUPPORTO ===== -->
+    <div v-if="tab === 'supporto'" class="support-section">
+      <div class="section-header">
+        <h2>Supporto tecnico</h2>
+        <button class="btn-add" @click="showTicketModal = true">+ Nuovo ticket</button>
+      </div>
+
+      <div v-if="supportError" class="alert-error">{{ supportError }}</div>
+
+      <div v-if="tickets.length === 0 && !supportError" class="empty-state">
+        Nessun ticket aperto. Crea il primo per richiedere assistenza.
+      </div>
+
+      <div class="tickets-list">
+        <div
+          v-for="t in tickets"
+          :key="t.id"
+          class="ticket-card"
+          @click="toggleTicket(t)"
+        >
+          <div class="ticket-header">
+            <span class="ticket-status" :class="t.stato">{{ t.stato || 'aperto' }}</span>
+            <span class="ticket-titolo">{{ t.oggetto }}</span>
+            <span class="ticket-data">{{ formatDate(t.data_apertura) }}</span>
+            <span class="ticket-chevron">{{ expandedTicket === t.id ? '▲' : '▼' }}</span>
+          </div>
+          <div v-if="expandedTicket === t.id" class="ticket-corpo">
+            <div v-if="t.messaggi && t.messaggi.length" class="ticket-messages">
+              <div v-for="msg in t.messaggi" :key="msg.id" class="ticket-msg"
+                :class="msg.autore_tipo">
+                <span class="ticket-msg-author">{{ msg.autore_tipo === 'cliente' ? 'Tu' : 'lake8.dev' }}</span>
+                <p>{{ msg.testo }}</p>
+                <span class="ticket-msg-ts">{{ formatDate(msg.data_creazione) }}</span>
+              </div>
+            </div>
+            <div v-else class="ticket-q">{{ t.n_messaggi > 0 ? '...' : 'Nessun messaggio' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== ADD CULLA MODAL ===== -->
     <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
       <div class="modal">
@@ -205,6 +247,9 @@
           <input v-model="newCulla.device_id" type="text" placeholder="nestgrow-a4b2" />
         </div>
         <p v-if="addError" class="alert-error small">{{ addError }}</p>
+        <button v-if="isLimitError" class="btn-upgrade-modal" @click="$router.push('/register?upgrade=true')">
+          🔄 Cambia piano →
+        </button>
         <div class="modal-actions">
           <button @click="showAddModal = false">Annulla</button>
           <button class="btn-primary" @click="createCulla" :disabled="addLoading">
@@ -279,6 +324,37 @@
       </div>
     </div>
 
+    <!-- ===== NEW TICKET MODAL ===== -->
+    <div v-if="showTicketModal" class="modal-overlay" @click.self="showTicketModal = false">
+      <div class="modal">
+        <h3>Nuovo ticket di supporto</h3>
+        <div class="field">
+          <label>Oggetto</label>
+          <input v-model="ticketForm.oggetto" type="text" placeholder="Descrivi brevemente il problema" />
+        </div>
+        <div class="field">
+          <label>Descrizione</label>
+          <textarea v-model="ticketForm.testo" rows="5"
+            placeholder="Descrivi il problema nel dettaglio..."></textarea>
+        </div>
+        <div class="field">
+          <label>Priorità</label>
+          <select v-model="ticketForm.priorita">
+            <option value="bassa">Bassa</option>
+            <option value="normale">Normale</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+        <p v-if="ticketError" class="alert-error small">{{ ticketError }}</p>
+        <div class="modal-actions">
+          <button @click="showTicketModal = false">Annulla</button>
+          <button class="btn-primary" @click="submitTicket" :disabled="ticketSending">
+            {{ ticketSending ? 'Invio...' : 'Invia ticket' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -314,7 +390,20 @@ let savedFlashTimer = null
 // Messages
 const expandedMsg = ref(null)
 
+// Support
+const tickets = ref([])
+const supportError = ref('')
+const expandedTicket = ref(null)
+const showTicketModal = ref(false)
+const ticketForm = ref({ oggetto: '', testo: '', priorita: 'normale' })
+const ticketError = ref('')
+const ticketSending = ref(false)
+
 let pollInterval = null
+
+const isLimitError = computed(() =>
+  addError.value.includes('massimo') || addError.value.includes('limite')
+)
 
 const progressPct = computed(() => {
   if (!license.value || !license.value.max_culle) return 0
@@ -478,6 +567,44 @@ function formatDate(dt) {
   return new Date(dt).toLocaleDateString('it-IT', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
+}
+
+async function openSupporto() {
+  tab.value = 'supporto'
+  supportError.value = ''
+  try {
+    const { data } = await axios.get('/support/tickets')
+    tickets.value = Array.isArray(data) ? data : (data.tickets || [])
+  } catch (e) {
+    supportError.value = e.response?.data?.detail || 'Errore caricamento ticket'
+  }
+}
+
+function toggleTicket(t) {
+  if (expandedTicket.value === t.id) {
+    expandedTicket.value = null
+  } else {
+    expandedTicket.value = t.id
+  }
+}
+
+async function submitTicket() {
+  ticketError.value = ''
+  if (!ticketForm.value.oggetto.trim() || !ticketForm.value.testo.trim()) {
+    ticketError.value = 'Compila oggetto e descrizione'
+    return
+  }
+  ticketSending.value = true
+  try {
+    await axios.post('/support/tickets', ticketForm.value)
+    showTicketModal.value = false
+    ticketForm.value = { oggetto: '', testo: '', priorita: 'normale' }
+    await openSupporto()
+  } catch (e) {
+    ticketError.value = e.response?.data?.detail || 'Errore invio ticket'
+  } finally {
+    ticketSending.value = false
+  }
 }
 
 function msgIcon(tipo) {
@@ -757,6 +884,15 @@ onUnmounted(() => {
   font-size: 0.72rem; color: #aaa; margin-top: 2px;
 }
 
+.btn-upgrade-modal {
+  width: 100%; padding: 10px;
+  background: #1f5c2e; color: white;
+  border: none; border-radius: 8px;
+  cursor: pointer; font-weight: 700; font-size: 0.9rem;
+  margin-top: 8px;
+}
+.btn-upgrade-modal:hover { background: #2d8048; }
+
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 .modal-actions button {
   padding: 9px 20px; border-radius: 8px;
@@ -766,4 +902,60 @@ onUnmounted(() => {
 .modal-actions .btn-primary { background: #1f5c2e; color: white; border-color: #1f5c2e; font-weight: 600; }
 .modal-actions .btn-primary:hover:not(:disabled) { background: #2d8048; }
 .modal-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Support section */
+.support-section { padding: 0 24px 24px; }
+.tickets-list { display: flex; flex-direction: column; gap: 10px; }
+
+.ticket-card {
+  border-radius: 10px; border: 1.5px solid #e0e0e0;
+  overflow: hidden; cursor: pointer;
+  transition: box-shadow 0.15s; background: white;
+}
+.ticket-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+.ticket-card.unread { border-color: #1976d2; }
+
+.ticket-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+}
+.ticket-status {
+  font-size: 0.72rem; font-weight: 700; padding: 2px 10px;
+  border-radius: 12px; white-space: nowrap;
+  background: #e8f5e9; color: #2e7d32;
+}
+.ticket-status.chiuso { background: #f5f5f5; color: #888; }
+.ticket-status.in_lavorazione { background: #e3f2fd; color: #1565c0; }
+
+.ticket-titolo { flex: 1; font-size: 0.92rem; color: #333; }
+.ticket-titolo.bold { font-weight: 700; }
+.ticket-data { font-size: 0.78rem; color: #999; white-space: nowrap; }
+.ticket-chevron { color: #999; font-size: 0.7rem; margin-left: 6px; }
+
+.ticket-corpo {
+  padding: 0 16px 16px;
+  font-size: 0.88rem; color: #555; line-height: 1.6;
+}
+.ticket-q { white-space: pre-wrap; margin-bottom: 12px; }
+.ticket-messages { display: flex; flex-direction: column; gap: 10px; }
+.ticket-msg { border-radius: 8px; padding: 10px 12px; }
+.ticket-msg.cliente { background: #f5f5f5; }
+.ticket-msg.operatore { background: #f0faf2; border-left: 3px solid #2d8048; }
+.ticket-msg-author { font-size: 0.78rem; font-weight: 700; color: #555; }
+.ticket-msg p { margin-top: 4px; white-space: pre-wrap; font-size: 0.88rem; }
+.ticket-msg-ts { font-size: 0.72rem; color: #aaa; display: block; margin-top: 4px; }
+
+/* New ticket modal textarea/select */
+.field textarea {
+  width: 100%; padding: 9px 13px;
+  border: 1.5px solid #ddd; border-radius: 8px;
+  font-size: 0.95rem; resize: vertical; font-family: inherit;
+}
+.field textarea:focus { outline: none; border-color: #2d8048; }
+.field select {
+  width: 100%; padding: 9px 13px;
+  border: 1.5px solid #ddd; border-radius: 8px;
+  font-size: 0.95rem; background: white;
+}
+.field select:focus { outline: none; border-color: #2d8048; }
 </style>

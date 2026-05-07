@@ -11,14 +11,13 @@
         <!-- Tenant info (read-only in upgrade mode) -->
         <div class="field">
           <label>Ragione Sociale</label>
-          <input v-model="form.ragione_sociale" type="text" :readonly="isUpgrade"
-            :class="{ readonly: isUpgrade }" placeholder="Mario Rossi / Azienda Agricola SRL" required />
+          <input v-model="form.ragione_sociale" type="text"
+            placeholder="Mario Rossi / Azienda Agricola SRL" required />
         </div>
 
         <div class="field">
           <label>P.IVA o Codice Fiscale</label>
-          <input v-model="form.piva" type="text" :readonly="isUpgrade"
-            :class="{ readonly: isUpgrade }"
+          <input v-model="form.piva" type="text"
             placeholder="P.IVA (11 cifre) o Codice Fiscale (16 caratteri)"
             @input="pivaError = ''" required />
           <span v-if="pivaError" class="field-error">{{ pivaError }}</span>
@@ -26,8 +25,8 @@
 
         <div class="field">
           <label>Email</label>
-          <input v-model="form.email" type="email" :readonly="isUpgrade"
-            :class="{ readonly: isUpgrade }" placeholder="email@azienda.it" required />
+          <input v-model="form.email" type="email"
+            placeholder="email@azienda.it" required />
         </div>
 
         <!-- Plan selection -->

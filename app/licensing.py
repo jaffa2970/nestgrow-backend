@@ -36,30 +36,35 @@ async def get_max_culle(db: AsyncSession) -> int:
 async def heartbeat(jwt_token: str | None = None) -> dict | None:
     from app.database import AsyncSessionLocal
 
-    headers = {}
-    if jwt_token:
-        headers["Authorization"] = f"Bearer {jwt_token}"
+    async with AsyncSessionLocal() as db:
+        existing = await get_licenza(db)
+        token = jwt_token or (existing.jwt_token if existing else None)
+        if not token:
+            logger.debug("Heartbeat skipped: no JWT token available")
+            return None
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{settings.license_server_url}/api/v1/heartbeat",
-                headers=headers,
-                params={"product": "NESTGROW"},
+            resp = await client.post(
+                f"{settings.license_server_url}/heartbeat",
+                json={
+                    "token": token,
+                    "prodotto_codice": "NESTGROW",
+                    "sessioni_attive": 0,
+                },
             )
             if resp.status_code == 200:
                 data = resp.json()
                 async with AsyncSessionLocal() as db:
                     existing = await get_licenza(db)
-                    valida_fino = datetime.fromisoformat(
-                        data.get("valid_until", "2099-01-01T00:00:00")
-                    )
+                    valida_fino_raw = data.get("valid_until", "2099-01-01T00:00:00")
+                    valida_fino = datetime.fromisoformat(valida_fino_raw)
                     if existing:
                         await db.execute(
                             update(LicenzaCache)
                             .where(LicenzaCache.id == 1)
                             .values(
-                                piano=data.get("plan", "free"),
+                                piano=data.get("plan", existing.piano),
                                 valida_fino=valida_fino,
                                 features=data.get("features", {}),
                                 aggiornato_il=datetime.now(timezone.utc),

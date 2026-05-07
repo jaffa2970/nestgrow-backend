@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, culle
 from app.api import license as license_api
 from app.api import messages as messages_api
+from app.api import support as support_api
 from app.database import AsyncSessionLocal, engine
 from app.licensing import heartbeat
 from app.messaging import sync_messages
@@ -171,6 +172,7 @@ app.include_router(auth.router)
 app.include_router(culle.router)
 app.include_router(license_api.router)
 app.include_router(messages_api.router)
+app.include_router(support_api.router)
 
 
 @app.get("/health")

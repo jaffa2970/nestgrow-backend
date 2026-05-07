@@ -110,14 +110,17 @@ async def register_license(
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
-                f"{settings.license_server_url}/api/v1/register",
+                f"{settings.license_server_url}/register",
                 json={
-                    "prodotto": "NESTGROW",
+                    "prodotto_codice": "NESTGROW",
                     "ragione_sociale": payload.ragione_sociale,
                     "piva": payload.piva,
                     "email": str(payload.email),
+                    "nome": "",
+                    "cognome": "",
                     "piano": piano_server,
-                    "tos_accettato": payload.tos_accettato,
+                    "machine_id": "nestgrow-server",
+                    "version": "0.3.0",
                 },
             )
     except httpx.RequestError as exc:
@@ -142,20 +145,23 @@ async def register_license(
     )
     piano = data.get("plan", payload.piano)
 
+    jwt_token = data.get("jwt_token") or data.get("token")
+
     existing = await get_licenza(db)
     if existing:
+        values = dict(
+            piano=piano,
+            valida_fino=valida_fino,
+            features=data.get("features", {}),
+            aggiornato_il=datetime.now(timezone.utc),
+            ragione_sociale=payload.ragione_sociale,
+            piva=payload.piva,
+            email=str(payload.email),
+        )
+        if jwt_token:
+            values["jwt_token"] = jwt_token
         await db.execute(
-            update(LicenzaCache)
-            .where(LicenzaCache.id == 1)
-            .values(
-                piano=piano,
-                valida_fino=valida_fino,
-                features=data.get("features", {}),
-                aggiornato_il=datetime.now(timezone.utc),
-                ragione_sociale=payload.ragione_sociale,
-                piva=payload.piva,
-                email=str(payload.email),
-            )
+            update(LicenzaCache).where(LicenzaCache.id == 1).values(**values)
         )
     else:
         db.add(
@@ -167,6 +173,7 @@ async def register_license(
                 ragione_sociale=payload.ragione_sociale,
                 piva=payload.piva,
                 email=str(payload.email),
+                jwt_token=jwt_token,
             )
         )
     await db.commit()
