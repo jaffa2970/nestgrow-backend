@@ -108,7 +108,7 @@ async def register_license(
             resp = await client.post(
                 f"{settings.license_server_url}/api/v1/register",
                 json={
-                    "prodotto": "nestgrow",
+                    "prodotto": "NESTGROW",
                     "ragione_sociale": payload.ragione_sociale,
                     "piva": payload.piva,
                     "email": str(payload.email),

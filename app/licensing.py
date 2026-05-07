@@ -46,7 +46,7 @@ async def heartbeat(jwt_token: str | None = None) -> dict | None:
             resp = await client.get(
                 f"{settings.license_server_url}/api/v1/heartbeat",
                 headers=headers,
-                params={"product": "nestgrow"},
+                params={"product": "NESTGROW"},
             )
             if resp.status_code == 200:
                 data = resp.json()

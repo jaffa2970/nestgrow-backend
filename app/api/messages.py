@@ -62,7 +62,7 @@ async def mark_read(
             async with httpx.AsyncClient(timeout=5) as client:
                 await client.post(
                     f"{settings.license_server_url}/api/v1/messages/{msg_id}/read",
-                    params={"prodotto": "nestgrow", "piva": licenza.piva},
+                    params={"prodotto": "NESTGROW", "piva": licenza.piva},
                 )
         except Exception:
             pass

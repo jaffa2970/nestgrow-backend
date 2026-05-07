@@ -23,7 +23,7 @@ async def sync_messages() -> None:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
                     f"{settings.license_server_url}/api/v1/messages",
-                    params={"prodotto": "nestgrow", "piva": licenza.piva},
+                    params={"prodotto": "NESTGROW", "piva": licenza.piva},
                 )
                 if resp.status_code != 200:
                     logger.debug("Messages sync: server returned %d", resp.status_code)
