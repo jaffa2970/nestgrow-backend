@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(heartbeat, "interval", minutes=60, id="license_heartbeat")
     _scheduler.add_job(poll_pending_jwt, "interval", minutes=5, id="jwt_poll")
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
-    _scheduler.add_job(sync_messages, "interval", seconds=30, id="messages_sync")  # DEBUG: 30s
+    _scheduler.add_job(sync_messages, "interval", minutes=30, id="messages_sync")
     _scheduler.start()
     logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
 
