@@ -61,6 +61,7 @@ Stored in `piano_limiti` table. `PIANO_LIMITI_DEFAULT` dict in `app/licensing.py
 - 0006 jwt_token_text (widens to TEXT — RS256 JWTs are 800-1000+ chars)
 - 0007 messaggi_tipo_varchar (ENUM → VARCHAR(50) for LS notification types)
 - 0008 utenti (user management table, seeds admin from ADMIN_PASSWORD env)
+- 0009 zona_intervallo_lettura (adds intervallo_lettura_sec INT NOT NULL default 60 to zone table)
 
 ---
 
@@ -117,6 +118,19 @@ All endpoints are at root (no `/api/v1/` prefix — that was wrong):
 - `Utente` — username, password_hash (bcrypt), ruolo (administrator/user), attivo
 - `MessaggioCache` — tipo is VARCHAR(50) (was ENUM — LS sends "aggiornamento", "comunicazione" etc.)
 - `Culla`, `Zona`, `Lettura`, `Irrigazione`, `PianoLimiti`
+- `Zona` fields of note: `umidita_soglia_min/max`, `durata_irrigazione_sec`, `irrigazione_auto`, `intervallo_lettura_sec` (INT, default 60 — seconds between sensor reads, synced to ESP32 via MQTT cmd/config)
+
+---
+
+## Zone config MQTT (PUT /culle/{id}/zone/{num})
+
+After saving to DB, if `culla.device_id` is set and MQTT is connected, publishes:
+- Topic: `nestgrow/{device_id}/cmd/config`
+- Payload: `{"zona": numero_zona, "intervallo_ms": zona.intervallo_lettura_sec * 1000, "salva_nvs": true}`
+
+Frontend zone modal (`saveZoneConfig` in Dashboard.vue) sends all zone fields including `intervallo_lettura_sec`. The field was missing from the frontend until migration 0009 + this fix.
+
+**ESP32 BUG NOTE (firmware, not in this repo):** STATUS command must read `config.zona_interval[i]` (RAM) not `nvs.getInt(...)` — NVS lags behind until next reboot.
 
 ---
 

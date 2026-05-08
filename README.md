@@ -13,6 +13,7 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 - Sensore livello serbatoio centralizzato
 - Logica irrigazione automatica a soglie
 - **Grafici storici** per zona: umidità, serbatoio, irrigazioni, efficacia (ECharts)
+- Configurazione zona con sincronizzazione MQTT verso ESP32 (soglie, intervallo lettura)
 - Dashboard Vue 3 con aggiornamento real-time
 - **Sistema backup/restore** database con download diretto via browser
 - Gestione utenti multi-ruolo (administrator / user)
@@ -122,6 +123,7 @@ Il firmware open source per ESP32 è disponibile su:
 | `nestgrow/zona/{id}/umidita` | ESP32 → Backend | `{"v": 67.3, "ts": 1234567890}` | Lettura umidità suolo |
 | `nestgrow/serbatoio/livello` | ESP32 → Backend | `{"v": 82.0, "ts": 1234567890}` | Livello serbatoio (%) |
 | `nestgrow/zona/{id}/pompa` | Backend → ESP32 | `{"cmd": "on", "sec": 30}` | Comando attivazione pompa |
+| `nestgrow/device/{id}/cmd/config` | Backend → ESP32 | `{"zona": 1, "intervallo_ms": 30000, "salva_nvs": true}` | Intervallo lettura sensori zona |
 | `nestgrow/device/{id}/heartbeat` | ESP32 → Backend | `{"uptime_sec": 3600, "wifi_rssi": -65, ...}` | Stato dispositivo |
 | `nestgrow/device/{id}/cmd/reconfig` | Backend → ESP32 | `{"ssid": "...", "password": "...", "mqtt_host": "..."}` | Riconfigurazione WiFi remota |
 
