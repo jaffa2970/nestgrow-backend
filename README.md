@@ -1,31 +1,34 @@
 # NestGrow 🌱
 **by lake8.dev**
 
-Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo IoT via ESP32, irrigazione automatica con logica a soglie, dashboard real-time. Multi-tenant con licensing per piano.
+Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo IoT via ESP32, irrigazione automatica con logica a soglie, dashboard real-time con grafici storici. Multi-tenant con licensing per piano.
 
 ---
 
 ## Features
 
-- Gestione fino a N culle (dipende dal piano licenza)
+- Gestione culle con limite dipendente dal piano licenza
 - Controllo pompe indipendenti per zona via MQTT
 - Sensori umidità suolo capacitivi per zona
 - Sensore livello serbatoio centralizzato
-- Logica irrigazione automatica a soglie (livello 1)
-- ML predittivo sui cicli storici (livello 2 — roadmap)
+- Logica irrigazione automatica a soglie
+- **Grafici storici** per zona: umidità, serbatoio, irrigazioni, efficacia (ECharts)
 - Dashboard Vue 3 con aggiornamento real-time
+- **Sistema backup/restore** database con download diretto via browser
+- Gestione utenti multi-ruolo (administrator / user)
+- Messaggi e notifiche dal License Server
+- Supporto ticket integrato con License Server
 - Integrazione License Server lake8.dev
 
 ---
 
 ## Piani disponibili
 
-| Piano | Culle | Target |
-|-------|-------|--------|
+| Piano | Culle | Note |
+|-------|-------|------|
 | Free | 1 | Hobbisti e test |
 | Pro | 5 | Piccoli produttori |
-| Enterprise | 20 | Vivai e aziende agricole |
-| Ultra | Illimitato | Grandi impianti |
+| AI | 10 | Vivai e aziende agricole |
 
 ---
 
@@ -34,9 +37,10 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 | Componente | Tecnologia |
 |------------|------------|
 | Backend | Python 3.13 + FastAPI + SQLAlchemy async + Alembic |
-| Database | MariaDB 11 |
+| Database | MariaDB 11 (aiomysql) |
 | Broker MQTT | Eclipse Mosquitto 2 |
-| Frontend | Vue 3 + Vite |
+| Scheduler | APScheduler AsyncIOScheduler |
+| Frontend | Vue 3 + Vite + ECharts (vue-echarts) |
 | Deploy | Docker Compose |
 | License | lake8.dev License Server |
 
@@ -45,17 +49,62 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 ## Quick start
 
 ```bash
-git clone https://github.com/lake8dev/nestgrow-backend
+git clone https://github.com/jaffa2970/nestgrow-backend
 cd nestgrow-backend
 cp .env.example .env        # modifica le variabili
-docker-compose up --build
+
+# Crea la cartella backups con i permessi corretti PRIMA di avviare
+mkdir -p backups && chmod 777 backups
+
+docker compose up --build
 ```
 
 Accedi a:
 
 - **Dashboard:** http://localhost:3000
 - **API docs:** http://localhost:8000/docs
-- **Credenziali default:** `admin` / `admin` _(cambia subito in `.env`)_
+- **Credenziali default:** `admin` / `admin` _(cambia `ADMIN_PASSWORD` in `.env`)_
+
+---
+
+## Backup & Restore
+
+NestGrow include un sistema completo di backup del database.
+
+### Via Dashboard (tab ⚙️ Sistema — solo admin)
+
+- **Salva su volume** — esegue un dump e lo salva in `/app/backups/` (volume persistente)
+- **Scarica backup** — scarica direttamente nel browser un file `.sql.gz` senza salvare sul server
+- **Restore da volume** — ripristina uno dei backup salvati sul server
+- **Restore da file** — carica un file `.sql.gz` locale e ripristina il database
+
+### Via script host (cartella `backup/`)
+
+```bash
+./backup/backup.sh              # crea backup in ./backups/
+./backup/list.sh                # lista backup disponibili
+./backup/restore.sh <file.sql.gz>  # ripristino interattivo (chiede conferma)
+```
+
+### Backup automatico
+
+Il backend esegue automaticamente un backup ogni giorno alle 02:00 (APScheduler cron job).
+Vengono mantenuti gli ultimi 30 file.
+
+### Prima esecuzione — fix permessi
+
+Se Docker crea la cartella `./backups` come `root`, il container backend non può scrivere.
+Soluzione: crea la cartella manualmente prima di `docker compose up`:
+
+```bash
+mkdir -p backups && chmod 777 backups
+```
+
+Oppure, dopo il primo avvio:
+
+```bash
+docker exec nestgrow-backend chmod 777 /app/backups
+```
 
 ---
 
@@ -88,6 +137,18 @@ Il firmware open source per ESP32 è disponibile su:
 | `LICENSE_SERVER_URL` | `https://license.lake8.dev` | URL License Server |
 | `JWT_SECRET` | `changeme` | Segreto JWT (**CAMBIA in produzione**) |
 | `ADMIN_PASSWORD` | `admin` | Password admin dashboard (**CAMBIA in produzione**) |
+
+---
+
+## Scheduler jobs
+
+| Job | Intervallo | Funzione |
+|-----|-----------|---------|
+| `irrigation_tick` | 60 sec | Logica irrigazione automatica a soglie |
+| `jwt_poll` | 5 min | Ritiro JWT pendenti dal License Server |
+| `messages_sync` | 30 min | Sincronizzazione messaggi/notifiche |
+| `license_heartbeat` | 60 min | Heartbeat verso License Server |
+| `auto_backup` | ogni giorno 02:00 | Backup automatico database |
 
 ---
 
