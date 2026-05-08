@@ -21,19 +21,19 @@ client.connect(HOST, PORT, 60)
 # Publish humidity reading
 topic_umidita = f"nestgrow/{DEVICE_ID}/zona/{ZONA_NUM}/umidita"
 payload_umidita = json.dumps({"v": UMIDITA, "ts": int(time.time())})
-client.publish(topic_umidita, payload_umidita, qos=1).wait_for_publish()
+client.publish(topic_umidita, payload_umidita, qos=1).wait_for_publish(timeout=2.0)
 print(f"Published → {topic_umidita}: {payload_umidita}")
 
 # Publish tank level
 topic_tank = f"nestgrow/{DEVICE_ID}/serbatoio/livello"
 payload_tank = json.dumps({"v": 82.0, "ts": int(time.time())})
-client.publish(topic_tank, payload_tank, qos=1).wait_for_publish()
+client.publish(topic_tank, payload_tank, qos=1).wait_for_publish(timeout=2.0)
 print(f"Published → {topic_tank}: {payload_tank}")
 
 # Publish heartbeat
 topic_hb = f"nestgrow/{DEVICE_ID}/heartbeat"
 payload_hb = json.dumps({"uptime_sec": 3600, "wifi_rssi": -55, "ts": int(time.time())})
-client.publish(topic_hb, payload_hb, qos=1).wait_for_publish()
+client.publish(topic_hb, payload_hb, qos=1).wait_for_publish(timeout=2.0)
 print(f"Published → {topic_hb}: {payload_hb}")
 
 client.disconnect()
