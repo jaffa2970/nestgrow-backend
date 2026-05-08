@@ -136,6 +136,40 @@ Inline expandable section per ogni culla card (pulsante "📊 Grafici"):
 - Grafico 4: scatter efficacia irrigazione (pre→post) con diagonale di riferimento
 - Griglia 2 colonne desktop / 1 colonna mobile; "Nessun dato" se periodo vuoto
 
+## Backup & Restore system
+
+### Script host-side (backup/)
+- `backup/backup.sh [dir]` — dumpa DB via `docker exec nestgrow-db mariadb-dump`, gzippa, mantiene ultimi 30
+- `backup/restore.sh <file.sql.gz>` — chiede conferma "SI", ripristina via `docker exec -i nestgrow-db mariadb`
+- `backup/list.sh` — lista backup in `./backups/`
+- Default backup dir: `./backups/` (volume montato in docker-compose)
+
+### API admin (app/api/admin.py) — require_admin
+- `GET /admin/backup` → esegue backup da dentro il container (usa `mysqldump` → `mariadb-dump` disponibili entrambi)
+- `GET /admin/backups` → lista file in `/app/backups/`
+- `POST /admin/restore` → body `{"filename": "..."}`, ripristina da `/app/backups/`
+
+### Scheduler
+- `auto_backup` cron job alle 02:00 ogni giorno (APScheduler `"cron"`, `hour=2`, `minute=0`)
+
+### Frontend
+- Tab ⚙️ Sistema (solo admin) in Dashboard con: pulsante "💾 Backup ora", lista ultimi 5 backup, pulsante "🔄 Restore" per ognuno con `window.confirm()`
+
+### ⚠️ PRIMO AVVIO — fix permessi obbligatorio
+Docker crea `./backups/` come `root`. Prima di usare il backup bisogna:
+```bash
+docker exec nestgrow-backend chmod 777 /app/backups
+```
+oppure creare la directory manualmente PRIMA di `docker compose up`:
+```bash
+mkdir -p backups && chmod 777 backups
+```
+
+### Nota tecnica
+- Container db (mariadb:11) usa `mariadb-dump` (non `mysqldump` — non in PATH)
+- Container backend (python:3.13-slim + default-mysql-client) ha entrambi `mysqldump` e `mariadb-dump`
+- I file `.sql.gz` sono in `.gitignore` — i backup non entrano nel repo
+
 ## Pending / known issues
 
 - License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
