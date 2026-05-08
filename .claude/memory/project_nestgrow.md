@@ -145,15 +145,26 @@ Inline expandable section per ogni culla card (pulsante "📊 Grafici"):
 - Default backup dir: `./backups/` (volume montato in docker-compose)
 
 ### API admin (app/api/admin.py) — require_admin
-- `GET /admin/backup` → esegue backup da dentro il container (usa `mysqldump` → `mariadb-dump` disponibili entrambi)
+- `GET /admin/backup` → esegue backup su disco in `/app/backups/`, ritorna metadata
+- `GET /admin/backup/download` → dump DB in memoria, StreamingResponse `.sql.gz` (no disk write) — usa `_dump_sql()` helper condiviso
 - `GET /admin/backups` → lista file in `/app/backups/`
 - `POST /admin/restore` → body `{"filename": "..."}`, ripristina da `/app/backups/`
+- `POST /admin/restore/upload` → accetta UploadFile `.sql.gz`, decomprimi in memoria, ripristina via `mysql`
+
+#### Bug fix: Invalid Date in lista backup
+`Path.stem` rimuove solo l'ultima estensione: `file.sql.gz` → stem = `file.sql` (non `file`).
+Fix: usare `f.name.replace("nestgrow_backup_","").replace(".sql.gz","")` invece di `f.stem`.
+Frontend: `parseBackupDate(filename)` legge il timestamp direttamente dal nome file via regex `(\d{8})_(\d{6})` — non usa il campo `timestamp` dell'API.
 
 ### Scheduler
 - `auto_backup` cron job alle 02:00 ogni giorno (APScheduler `"cron"`, `hour=2`, `minute=0`)
 
 ### Frontend
-- Tab ⚙️ Sistema (solo admin) in Dashboard con: pulsante "💾 Backup ora", lista ultimi 5 backup, pulsante "🔄 Restore" per ognuno con `window.confirm()`
+- Tab ⚙️ Sistema (solo admin) in Dashboard con:
+  - Pulsante "💾 Salva su volume" → `doBackup()` — salva su `/app/backups/`
+  - Pulsante "⬇️ Scarica backup" → `doDownload()` — `axios.get('/admin/backup/download', {responseType:'blob'})` + `<a>.click()` trick
+  - Lista ultimi 5 backup con `parseBackupDate(filename)` per la data, pulsante "🔄 Restore" per ognuno con `window.confirm()`
+  - Sezione "Restore da file locale": file picker `.sql.gz`, pulsante "🔄 Ripristina da file" → `doUploadRestore()` con FormData + `axios.post('/admin/restore/upload', formData)`
 
 ### ⚠️ PRIMO AVVIO — fix permessi obbligatorio
 Docker crea `./backups/` come `root`. Prima di usare il backup bisogna:
