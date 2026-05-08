@@ -11,6 +11,10 @@ from app.database import get_db
 from app.licensing import get_licenza, get_max_culle
 from app.models import Culla, Irrigazione, Lettura, Zona
 from app.mqtt_client import get_client, latest_readings, latest_tank, pump_state, publish_pump_cmd
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/culle", tags=["culle"])
 
@@ -36,6 +40,7 @@ class ZonaUpdate(BaseModel):
     umidita_soglia_max: Optional[float] = None
     durata_irrigazione_sec: Optional[int] = None
     irrigazione_auto: Optional[bool] = None
+    intervallo_lettura_sec: Optional[int] = None
 
 
 class PumpCmd(BaseModel):
@@ -54,6 +59,7 @@ class ZonaOut(BaseModel):
     umidita_soglia_max: Optional[float] = None
     durata_irrigazione_sec: Optional[int] = None
     irrigazione_auto: bool = True
+    intervallo_lettura_sec: int = 60
     ultima_umidita: Optional[float] = None
     ultima_lettura_ts: Optional[datetime] = None
     pompa_on: bool = False
@@ -141,6 +147,7 @@ def _build_zona_out(zona: Zona, db_reading: dict | None = None) -> ZonaOut:
         umidita_soglia_max=zona.umidita_soglia_max,
         durata_irrigazione_sec=zona.durata_irrigazione_sec,
         irrigazione_auto=zona.irrigazione_auto,
+        intervallo_lettura_sec=zona.intervallo_lettura_sec,
         ultima_umidita=reading.get("umidita_pct"),
         ultima_lettura_ts=reading.get("ts"),
         pompa_on=_is_pump_on(zona.id),
@@ -310,6 +317,20 @@ async def update_zona(
         setattr(zona, field, value)
     await db.commit()
     await db.refresh(zona)
+
+    culla = await db.get(Culla, culla_id)
+    if culla and culla.device_id:
+        client = await get_client()
+        if client is not None:
+            topic = f"nestgrow/{culla.device_id}/cmd/config"
+            payload = {
+                "zona": numero_zona,
+                "intervallo_ms": zona.intervallo_lettura_sec * 1000,
+                "salva_nvs": True,
+            }
+            await client.publish(topic, json.dumps(payload))
+            logger.info("MQTT config → %s: %s", topic, payload)
+
     return _build_zona_out(zona)
 
 

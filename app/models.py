@@ -74,6 +74,7 @@ class Zona(Base):
     umidita_soglia_max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     durata_irrigazione_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     irrigazione_auto: Mapped[bool] = mapped_column(Boolean, default=True)
+    intervallo_lettura_sec: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
 
     culla: Mapped["Culla"] = relationship("Culla", back_populates="zone")
     pianta: Mapped[Optional[Pianta]] = relationship("Pianta")
