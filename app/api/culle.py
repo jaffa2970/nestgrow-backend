@@ -372,6 +372,138 @@ async def pump_command(
 
 # ---------- Sensors ----------
 
+# ---------- Stats / Grafici ----------
+
+@router.get("/{culla_id}/stats/irrigazioni")
+async def get_culla_stats_irrigazioni(
+    culla_id: int,
+    giorni: int = 30,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_user),
+):
+    culla = await db.get(Culla, culla_id)
+    if not culla or not culla.attiva:
+        raise HTTPException(status_code=404, detail="Culla non trovata")
+
+    zone = await _load_zone(culla_id, db)
+    since = datetime.now(timezone.utc) - timedelta(days=giorni)
+
+    per_zona = []
+    for zona in zone:
+        row = (await db.execute(
+            select(
+                func.count(Irrigazione.id).label("totale"),
+                func.avg(Irrigazione.durata_sec).label("durata_media"),
+                func.avg(Irrigazione.umidita_pre).label("umidita_media_pre"),
+                func.avg(Irrigazione.umidita_post).label("umidita_media_post"),
+            )
+            .where(
+                Irrigazione.zona_id == zona.id,
+                Irrigazione.ts_inizio >= since,
+            )
+        )).one()
+        per_zona.append({
+            "zona": zona.numero_zona,
+            "nome": zona.nome or f"Zona {zona.numero_zona}",
+            "totale_irrigazioni": row.totale or 0,
+            "durata_media_sec": round(float(row.durata_media), 1) if row.durata_media else 0.0,
+            "umidita_media_pre": round(float(row.umidita_media_pre), 1) if row.umidita_media_pre else None,
+            "umidita_media_post": round(float(row.umidita_media_post), 1) if row.umidita_media_post else None,
+        })
+
+    return {"per_zona": per_zona}
+
+
+@router.get("/{culla_id}/stats")
+async def get_culla_stats(
+    culla_id: int,
+    giorni: int = 7,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_user),
+):
+    culla = await db.get(Culla, culla_id)
+    if not culla or not culla.attiva:
+        raise HTTPException(status_code=404, detail="Culla non trovata")
+
+    zone = await _load_zone(culla_id, db)
+    zone_ids = [z.id for z in zone]
+    since = datetime.now(timezone.utc) - timedelta(days=giorni)
+
+    def _bucket(col):
+        return func.from_unixtime(func.floor(func.unix_timestamp(col) / 900) * 900)
+
+    zona_umidita = []
+    for zona in zone:
+        bucket = _bucket(Lettura.ts)
+        rows = await db.execute(
+            select(bucket.label("ts_bucket"), func.avg(Lettura.umidita_pct).label("v"))
+            .where(
+                Lettura.zona_id == zona.id,
+                Lettura.ts >= since,
+                Lettura.umidita_pct.is_not(None),
+            )
+            .group_by(bucket)
+            .order_by(bucket)
+        )
+        dati = []
+        for row in rows.all():
+            if row.v is not None and row.ts_bucket is not None:
+                ts_str = row.ts_bucket.isoformat() if hasattr(row.ts_bucket, "isoformat") else str(row.ts_bucket)
+                dati.append({"ts": ts_str, "v": round(float(row.v), 1)})
+        zona_umidita.append({
+            "zona": zona.numero_zona,
+            "zona_id": zona.id,
+            "nome": zona.nome or f"Zona {zona.numero_zona}",
+            "coltura": zona.descrizione_coltura or "",
+            "umidita_soglia_min": zona.umidita_soglia_min,
+            "umidita_soglia_max": zona.umidita_soglia_max,
+            "dati": dati,
+        })
+
+    irr_result = await db.execute(
+        select(Irrigazione, Zona.numero_zona)
+        .join(Zona, Zona.id == Irrigazione.zona_id)
+        .where(
+            Irrigazione.zona_id.in_(zone_ids),
+            Irrigazione.ts_inizio >= since,
+        )
+        .order_by(Irrigazione.ts_inizio)
+    )
+    irrigazioni = []
+    for irr, num_zona in irr_result.all():
+        irrigazioni.append({
+            "zona": num_zona,
+            "ts_inizio": irr.ts_inizio.isoformat(),
+            "durata_sec": irr.durata_sec,
+            "umidita_pre": irr.umidita_pre,
+            "umidita_post": irr.umidita_post,
+            "trigger": irr.trigger,
+        })
+
+    bucket = _bucket(Lettura.ts)
+    serb_result = await db.execute(
+        select(bucket.label("ts_bucket"), func.avg(Lettura.livello_serbatoio_pct).label("v"))
+        .where(
+            Lettura.zona_id.in_(zone_ids),
+            Lettura.ts >= since,
+            Lettura.livello_serbatoio_pct.is_not(None),
+        )
+        .group_by(bucket)
+        .order_by(bucket)
+    )
+    serbatoio = []
+    for row in serb_result.all():
+        if row.v is not None and row.ts_bucket is not None:
+            ts_str = row.ts_bucket.isoformat() if hasattr(row.ts_bucket, "isoformat") else str(row.ts_bucket)
+            serbatoio.append({"ts": ts_str, "v": round(float(row.v), 1)})
+
+    return {
+        "zona_umidita": zona_umidita,
+        "irrigazioni": irrigazioni,
+        "serbatoio": serbatoio,
+    }
+
+
 @router.get("/{culla_id}/zone/{numero_zona}/readings", response_model=list[LetturaOut])
 async def get_readings(
     culla_id: int,

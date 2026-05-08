@@ -49,6 +49,9 @@
             <span class="culla-id">#{{ culla.id }}</span>
             <span class="culla-nome">{{ culla.nome }}</span>
             <span v-if="culla.device_id" class="device-tag">{{ culla.device_id }}</span>
+            <button class="btn-grafici" @click="toggleGrafici(culla.id)">
+              {{ expandedGrafici === culla.id ? '📊 Nascondi' : '📊 Grafici' }}
+            </button>
             <button class="btn-icon" title="Disattiva culla" @click="deleteCulla(culla.id)">✕</button>
           </div>
 
@@ -114,6 +117,8 @@
           </table>
 
           <div v-if="pumpError[culla.id]" class="alert-error small">{{ pumpError[culla.id] }}</div>
+
+          <CullaGrafici v-if="expandedGrafici === culla.id" :culla="culla" />
         </div>
       </div>
     </div>
@@ -379,6 +384,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { isAdmin } from '../auth.js'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import CullaGrafici from '../components/CullaGrafici.vue'
 
 const router = useRouter()
 
@@ -586,6 +592,13 @@ function formatDate(dt) {
   })
 }
 
+// Grafici per culla
+const expandedGrafici = ref(null)
+
+function toggleGrafici(cullaId) {
+  expandedGrafici.value = expandedGrafici.value === cullaId ? null : cullaId
+}
+
 const jwtPending = ref(false)
 const loadingTicketId = ref(null)
 
@@ -745,6 +758,14 @@ onUnmounted(() => {
   background: #e8f5e9; color: #2d8048; font-size: 0.75rem;
   padding: 2px 8px; border-radius: 12px; font-family: monospace;
 }
+.btn-grafici {
+  background: #e8f5e9; color: #2d8048; border: 1.5px solid #a5d6a7;
+  padding: 4px 12px; border-radius: 16px; cursor: pointer;
+  font-size: 0.78rem; font-weight: 600; margin-left: auto;
+  transition: background 0.15s;
+}
+.btn-grafici:hover { background: #c8e6c9; }
+
 .btn-icon {
   background: none; border: none; color: #bbb; cursor: pointer;
   font-size: 0.9rem; padding: 4px 6px; border-radius: 4px;
