@@ -322,6 +322,8 @@ async def update_zona(
     if culla and culla.device_id:
         client = await get_client()
         if client is not None:
+            logger.info("Intervallo ricevuto: %ss", zona.intervallo_lettura_sec)
+            logger.info("MQTT intervallo_ms: %s", zona.intervallo_lettura_sec * 1000)
             topic = f"nestgrow/{culla.device_id}/cmd/config"
             payload = {
                 "zona": numero_zona,
