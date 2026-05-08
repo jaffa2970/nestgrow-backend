@@ -45,7 +45,7 @@ Stored in `piano_limiti` table. `PIANO_LIMITI_DEFAULT` dict in `app/licensing.py
 | license_heartbeat | heartbeat() | 60 min | POST /heartbeat to LS |
 | jwt_poll | poll_pending_jwt() | 5 min | Collect pending JWT delivery |
 | irrigation_tick | _irrigation_tick() | 60 sec | Auto-irrigation logic |
-| messages_sync | sync_messages() | **30s (DEBUG)** | Restore to 15 min after debug |
+| messages_sync | sync_messages() | 30 min | Also called once at boot (await, not task) |
 
 `sync_messages()` is also called with `await` at startup (before `yield`) so logs appear immediately on boot.
 
@@ -122,6 +122,6 @@ All endpoints are at root (no `/api/v1/` prefix — that was wrong):
 
 ## Pending / known issues
 
-- `messages_sync` job interval is currently 30s (DEBUG) — restore to 15 min after confirming notifications work
+- `messages_sync` job interval is 30 min (confirmed working)
 - License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
 - The JWT consumed during VARCHAR(500) overflow (before migration 0006) was marked delivered on LS but not saved locally — if jwt_token is empty, admin needs to manually activate via `/license/activate`
