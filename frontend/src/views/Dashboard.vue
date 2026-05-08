@@ -265,11 +265,15 @@
       <div class="sistema-card">
         <h3 class="sistema-title">💾 Backup & Restore</h3>
 
-        <!-- Backup now -->
+        <!-- Backup actions -->
         <div class="backup-action">
           <button class="btn-backup" :disabled="backupLoading" @click="doBackup">
-            <span v-if="backupLoading">⏳ Backup in corso...</span>
-            <span v-else>💾 Backup ora</span>
+            <span v-if="backupLoading">⏳ Salvataggio...</span>
+            <span v-else>💾 Salva su volume</span>
+          </button>
+          <button class="btn-download" :disabled="downloadLoading" @click="doDownload">
+            <span v-if="downloadLoading">⏳ Download...</span>
+            <span v-else>⬇️ Scarica backup</span>
           </button>
           <div v-if="backupSuccess" class="backup-ok">✅ {{ backupSuccess }}</div>
           <div v-if="backupError" class="alert-error small">{{ backupError }}</div>
@@ -290,7 +294,7 @@
             </thead>
             <tbody>
               <tr v-for="b in backupList.slice(0, 5)" :key="b.filename">
-                <td class="backup-ts">{{ formatBackupTs(b.timestamp) }}</td>
+                <td class="backup-ts">{{ parseBackupDate(b.filename) }}</td>
                 <td class="backup-size">{{ formatBytes(b.size_bytes) }}</td>
                 <td class="backup-acts">
                   <button
@@ -307,6 +311,36 @@
           </table>
           <div v-if="restoreSuccess" class="backup-ok">✅ {{ restoreSuccess }}</div>
           <div v-if="restoreError" class="alert-error small">{{ restoreError }}</div>
+        </div>
+
+        <!-- Restore from upload -->
+        <div class="backup-list-wrap">
+          <h4 class="backup-list-title">🔁 Restore da file locale</h4>
+          <p class="backup-upload-hint">Carica un file <code>.sql.gz</code> scaricato in precedenza.</p>
+          <div class="backup-upload-row">
+            <input
+              ref="uploadInput"
+              type="file"
+              accept=".sql.gz,.gz"
+              style="display:none"
+              @change="onFileSelected"
+            />
+            <button class="btn-choose-file" @click="$refs.uploadInput.click()">
+              📂 Scegli file...
+            </button>
+            <span class="upload-filename">{{ uploadFilename || 'Nessun file selezionato' }}</span>
+          </div>
+          <button
+            v-if="uploadFile"
+            class="btn-restore-upload"
+            :disabled="uploadRestoreLoading"
+            @click="doUploadRestore"
+          >
+            <span v-if="uploadRestoreLoading">⏳ Restore in corso...</span>
+            <span v-else>🔄 Ripristina da file</span>
+          </button>
+          <div v-if="uploadRestoreSuccess" class="backup-ok">✅ {{ uploadRestoreSuccess }}</div>
+          <div v-if="uploadRestoreError" class="alert-error small">{{ uploadRestoreError }}</div>
         </div>
       </div>
     </div>
@@ -649,14 +683,21 @@ function formatDate(dt) {
 }
 
 // Sistema / Backup
-const backupList        = ref([])
-const backupListLoading = ref(false)
-const backupLoading     = ref(false)
-const backupSuccess     = ref('')
-const backupError       = ref('')
-const restoreLoading    = ref('')
-const restoreSuccess    = ref('')
-const restoreError      = ref('')
+const backupList           = ref([])
+const backupListLoading    = ref(false)
+const backupLoading        = ref(false)
+const downloadLoading      = ref(false)
+const backupSuccess        = ref('')
+const backupError          = ref('')
+const restoreLoading       = ref('')
+const restoreSuccess       = ref('')
+const restoreError         = ref('')
+const uploadInput          = ref(null)
+const uploadFile           = ref(null)
+const uploadFilename       = ref('')
+const uploadRestoreLoading = ref(false)
+const uploadRestoreSuccess = ref('')
+const uploadRestoreError   = ref('')
 
 async function openSistema() {
   tab.value = 'sistema'
@@ -664,6 +705,8 @@ async function openSistema() {
   backupError.value = ''
   restoreSuccess.value = ''
   restoreError.value = ''
+  uploadRestoreSuccess.value = ''
+  uploadRestoreError.value = ''
   backupListLoading.value = true
   try {
     const { data } = await axios.get('/admin/backups')
@@ -708,6 +751,70 @@ async function doRestore(filename) {
   } finally {
     restoreLoading.value = ''
   }
+}
+
+async function doDownload() {
+  downloadLoading.value = true
+  backupError.value = ''
+  try {
+    const response = await axios.get('/admin/backup/download', { responseType: 'blob' })
+    const disposition = response.headers['content-disposition'] || ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : `nestgrow_backup.sql.gz`
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    backupError.value = e.response?.data?.detail || 'Errore durante il download'
+  } finally {
+    downloadLoading.value = false
+  }
+}
+
+function onFileSelected(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  uploadFile.value = file
+  uploadFilename.value = file.name
+  uploadRestoreSuccess.value = ''
+  uploadRestoreError.value = ''
+}
+
+async function doUploadRestore() {
+  if (!uploadFile.value) return
+  if (!confirm(
+    `⚠️ Ripristinare il backup:\n${uploadFilename.value}\n\n` +
+    `Questa operazione sovrascrive TUTTI i dati attuali del database.\nConfermi?`
+  )) return
+
+  uploadRestoreLoading.value = true
+  uploadRestoreSuccess.value = ''
+  uploadRestoreError.value = ''
+  try {
+    const formData = new FormData()
+    formData.append('file', uploadFile.value)
+    await axios.post('/admin/restore/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    uploadRestoreSuccess.value = `Restore completato. Riavvia il backend per applicare le modifiche.`
+    uploadFile.value = null
+    uploadFilename.value = ''
+    if (uploadInput.value) uploadInput.value.value = ''
+  } catch (e) {
+    uploadRestoreError.value = e.response?.data?.detail || 'Errore durante il restore'
+  } finally {
+    uploadRestoreLoading.value = false
+  }
+}
+
+function parseBackupDate(filename) {
+  const match = filename.match(/(\d{8})_(\d{6})/)
+  if (!match) return filename
+  const d = match[1], t = match[2]
+  return `${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)} ${t.slice(0, 2)}:${t.slice(2, 4)}`
 }
 
 function formatBackupTs(ts) {
@@ -1219,6 +1326,15 @@ onUnmounted(() => {
 .backup-size { color: #888; white-space: nowrap; }
 .backup-acts { text-align: right; }
 
+.btn-download {
+  background: #e3f2fd; color: #1565c0; border: 1.5px solid #90caf9;
+  padding: 10px 20px; border-radius: 8px;
+  cursor: pointer; font-weight: 700; font-size: 0.9rem;
+  transition: background 0.2s;
+}
+.btn-download:hover:not(:disabled) { background: #bbdefb; }
+.btn-download:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .btn-restore {
   background: #fff3e0; color: #e65100; border: 1.5px solid #ffcc80;
   padding: 4px 12px; border-radius: 6px;
@@ -1227,4 +1343,25 @@ onUnmounted(() => {
 }
 .btn-restore:hover:not(:disabled) { background: #ffe0b2; }
 .btn-restore:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.backup-upload-hint { font-size: 0.82rem; color: #888; margin-bottom: 10px; }
+.backup-upload-hint code { background: #f5f5f5; padding: 1px 5px; border-radius: 3px; }
+
+.backup-upload-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.btn-choose-file {
+  background: white; border: 1.5px solid #ccc; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+  transition: border-color 0.15s; white-space: nowrap;
+}
+.btn-choose-file:hover { border-color: #1f5c2e; color: #1f5c2e; }
+.upload-filename { font-size: 0.82rem; color: #555; font-style: italic; }
+
+.btn-restore-upload {
+  background: #ffebee; color: #c62828; border: 1.5px solid #ef9a9a;
+  padding: 8px 18px; border-radius: 8px;
+  cursor: pointer; font-size: 0.88rem; font-weight: 700;
+  transition: background 0.15s;
+}
+.btn-restore-upload:hover:not(:disabled) { background: #ffcdd2; }
+.btn-restore-upload:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
