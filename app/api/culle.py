@@ -313,6 +313,8 @@ async def update_zona(
     zona = result.scalar_one_or_none()
     if not zona:
         raise HTTPException(status_code=404, detail="Zona non trovata")
+    logger.info("Body ricevuto: %s", body)
+    logger.info("intervallo_lettura_sec nel body: %s", body.intervallo_lettura_sec)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(zona, field, value)
     await db.commit()

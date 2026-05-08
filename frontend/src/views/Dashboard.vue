@@ -424,6 +424,15 @@
             min="1" max="300" class="input-small" />
         </div>
 
+        <div class="field">
+          <label>
+            Intervallo lettura sensori:
+            <strong>{{ zoneForm.intervallo_lettura_sec }} secondi</strong>
+          </label>
+          <input v-model.number="zoneForm.intervallo_lettura_sec" type="number"
+            min="5" max="3600" class="input-small" />
+        </div>
+
         <p v-if="zoneError" class="alert-error small">{{ zoneError }}</p>
 
         <div class="modal-actions">
@@ -599,6 +608,7 @@ function openZoneModal(cullaId, zona) {
     umidita_soglia_min: zona.umidita_soglia_min ?? 35,
     umidita_soglia_max: zona.umidita_soglia_max ?? 70,
     durata_irrigazione_sec: zona.durata_irrigazione_sec ?? 20,
+    intervallo_lettura_sec: zona.intervallo_lettura_sec ?? 60,
   }
   zoneError.value = ''
   showZoneModal.value = true
@@ -617,7 +627,10 @@ async function saveZoneConfig() {
     umidita_soglia_min: zoneForm.value.umidita_soglia_min,
     umidita_soglia_max: zoneForm.value.umidita_soglia_max,
     durata_irrigazione_sec: zoneForm.value.durata_irrigazione_sec,
+    intervallo_lettura_sec: zoneForm.value.intervallo_lettura_sec,
   }
+
+  console.log('Payload zona:', body)
 
   try {
     const { data } = await axios.put(`/culle/${cullaId}/zone/${num}`, body)
