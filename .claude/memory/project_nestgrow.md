@@ -19,7 +19,7 @@ NestGrow is a plant growth crib (culla) management system with IoT control via E
 ## Stack
 
 - Python 3.13 + FastAPI + SQLAlchemy async (AsyncSession, Mapped[]) + Alembic + MariaDB (aiomysql)
-- Vue 3 + Vite + Vue Router + Axios (no Pinia — reactive auth via module-level ref singleton `src/auth.js`)
+- Vue 3 + Vite + Vue Router + Axios + **ECharts + vue-echarts** (no Pinia — reactive auth via module-level ref singleton `src/auth.js`)
 - MQTT via asyncio-mqtt (eclipse-mosquitto:2)
 - APScheduler AsyncIOScheduler
 - Docker services: mosquitto / db (mariadb:11) / backend (:8000) / frontend (:3000 via nginx)
@@ -120,8 +120,23 @@ All endpoints are at root (no `/api/v1/` prefix — that was wrong):
 
 ---
 
+## Stats / Grafici API (app/api/culle.py)
+
+- `GET /culle/{id}/stats?giorni=N` — humidity timeseries per zone (15-min buckets via `FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(ts)/900)*900)`), irrigation events with pre/post humidity, serbatoio level. Returns `{zona_umidita, irrigazioni, serbatoio}`.
+- `GET /culle/{id}/stats/irrigazioni?giorni=N` — per-zone aggregates: totale_irrigazioni, durata_media_sec, umidita_media_pre/post. Returns `{per_zona}`.
+- Both endpoints require `require_user`.
+
+## Frontend grafici (src/components/CullaGrafici.vue)
+
+Inline expandable section per ogni culla card (pulsante "📊 Grafici"):
+- Selettore periodo: 24h / 7gg / 30gg
+- Grafico 1: line chart umidità per zona (4 colori: #2d6a4f, #1d6fa4, #e07b00, #6b2d8b), soglie tratteggiate, marker rossi irrigazioni
+- Grafico 2: area chart serbatoio con gradiente blu, linea rossa al 10%
+- Grafico 3: bar chart orizzontale irrigazioni per zona con tooltip stats
+- Grafico 4: scatter efficacia irrigazione (pre→post) con diagonale di riferimento
+- Griglia 2 colonne desktop / 1 colonna mobile; "Nessun dato" se periodo vuoto
+
 ## Pending / known issues
 
-- `messages_sync` job interval is 30 min (confirmed working)
 - License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
 - The JWT consumed during VARCHAR(500) overflow (before migration 0006) was marked delivered on LS but not saved locally — if jwt_token is empty, admin needs to manually activate via `/license/activate`
