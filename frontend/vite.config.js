@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/auth': { target: 'http://localhost:8000', changeOrigin: true },
+      '/auth':  { target: 'http://localhost:8000', changeOrigin: true },
+      '/admin': { target: 'http://localhost:8000', changeOrigin: true },
       '/culle': { target: 'http://localhost:8000', changeOrigin: true },
       '/license': { target: 'http://localhost:8000', changeOrigin: true },
       '/messages': { target: 'http://localhost:8000', changeOrigin: true },

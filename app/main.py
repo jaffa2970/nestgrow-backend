@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, culle
+from app.api import admin as admin_api
 from app.api import license as license_api
 from app.api import messages as messages_api
 from app.api import support as support_api
@@ -130,6 +131,16 @@ async def _irrigation_tick() -> None:
                     await db.commit()
 
 
+async def _auto_backup() -> None:
+    from app.api.admin import run_backup
+    logger.info("=== Auto backup database ===")
+    try:
+        info = await run_backup()
+        logger.info("Auto backup OK: %s (%d bytes)", info["filename"], info["size_bytes"])
+    except Exception as exc:
+        logger.error("Auto backup FAILED: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.mqtt_client as mqtt_mod
@@ -140,6 +151,7 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(poll_pending_jwt, "interval", minutes=5, id="jwt_poll")
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
     _scheduler.add_job(sync_messages, "interval", minutes=30, id="messages_sync")
+    _scheduler.add_job(_auto_backup, "cron", hour=2, minute=0, id="auto_backup")
     _scheduler.start()
     logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
 
@@ -178,6 +190,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(admin_api.router)
 app.include_router(culle.router)
 app.include_router(license_api.router)
 app.include_router(messages_api.router)

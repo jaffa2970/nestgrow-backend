@@ -1,6 +1,11 @@
 # Environment — MAI committare
 .env
 
+# Backup files
+backups/
+*.sql.gz
+*.sql
+
 # Python
 __pycache__/
 *.pyc

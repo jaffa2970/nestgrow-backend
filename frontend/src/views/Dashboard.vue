@@ -28,6 +28,7 @@
         <span v-if="unreadCount > 0" class="badge">{{ unreadCount }}</span>
       </button>
       <button :class="{ active: tab === 'supporto' }" @click="openSupporto">🎫 Supporto</button>
+      <button v-if="isAdmin" :class="{ active: tab === 'sistema' }" @click="openSistema">⚙️ Sistema</button>
     </div>
 
     <!-- ===== TAB CULLE ===== -->
@@ -251,6 +252,61 @@
             </div>
             <div v-else class="ticket-q">Nessun messaggio nel ticket.</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB SISTEMA ===== -->
+    <div v-if="tab === 'sistema'" class="sistema-section">
+      <div class="section-header">
+        <h2>Sistema</h2>
+      </div>
+
+      <div class="sistema-card">
+        <h3 class="sistema-title">💾 Backup & Restore</h3>
+
+        <!-- Backup now -->
+        <div class="backup-action">
+          <button class="btn-backup" :disabled="backupLoading" @click="doBackup">
+            <span v-if="backupLoading">⏳ Backup in corso...</span>
+            <span v-else>💾 Backup ora</span>
+          </button>
+          <div v-if="backupSuccess" class="backup-ok">✅ {{ backupSuccess }}</div>
+          <div v-if="backupError" class="alert-error small">{{ backupError }}</div>
+        </div>
+
+        <!-- Backup list -->
+        <div class="backup-list-wrap">
+          <h4 class="backup-list-title">Backup disponibili</h4>
+          <div v-if="backupListLoading" class="backup-loading">Caricamento...</div>
+          <div v-else-if="backupList.length === 0" class="backup-empty">Nessun backup disponibile</div>
+          <table v-else class="backup-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Dimensione</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in backupList.slice(0, 5)" :key="b.filename">
+                <td class="backup-ts">{{ formatBackupTs(b.timestamp) }}</td>
+                <td class="backup-size">{{ formatBytes(b.size_bytes) }}</td>
+                <td class="backup-acts">
+                  <button
+                    class="btn-restore"
+                    :disabled="restoreLoading === b.filename"
+                    @click="doRestore(b.filename)"
+                  >
+                    <span v-if="restoreLoading === b.filename">⏳</span>
+                    <span v-else>🔄 Restore</span>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="restoreSuccess" class="backup-ok">✅ {{ restoreSuccess }}</div>
+          <div v-if="restoreError" class="alert-error small">{{ restoreError }}</div>
         </div>
       </div>
     </div>
@@ -590,6 +646,83 @@ function formatDate(dt) {
   return new Date(dt).toLocaleDateString('it-IT', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
+}
+
+// Sistema / Backup
+const backupList        = ref([])
+const backupListLoading = ref(false)
+const backupLoading     = ref(false)
+const backupSuccess     = ref('')
+const backupError       = ref('')
+const restoreLoading    = ref('')
+const restoreSuccess    = ref('')
+const restoreError      = ref('')
+
+async function openSistema() {
+  tab.value = 'sistema'
+  backupSuccess.value = ''
+  backupError.value = ''
+  restoreSuccess.value = ''
+  restoreError.value = ''
+  backupListLoading.value = true
+  try {
+    const { data } = await axios.get('/admin/backups')
+    backupList.value = data.backups
+  } catch (e) {
+    backupError.value = e.response?.data?.detail || 'Errore caricamento lista backup'
+  } finally {
+    backupListLoading.value = false
+  }
+}
+
+async function doBackup() {
+  backupLoading.value = true
+  backupSuccess.value = ''
+  backupError.value = ''
+  try {
+    const { data } = await axios.get('/admin/backup')
+    backupSuccess.value = `${data.filename} (${formatBytes(data.size_bytes)})`
+    const { data: list } = await axios.get('/admin/backups')
+    backupList.value = list.backups
+  } catch (e) {
+    backupError.value = e.response?.data?.detail || 'Errore durante il backup'
+  } finally {
+    backupLoading.value = false
+  }
+}
+
+async function doRestore(filename) {
+  if (!confirm(
+    `Sei sicuro di voler ripristinare il backup:\n${filename}\n\n` +
+    `⚠️ Questa operazione sovrascrive TUTTI i dati attuali del database.`
+  )) return
+
+  restoreLoading.value = filename
+  restoreSuccess.value = ''
+  restoreError.value = ''
+  try {
+    await axios.post('/admin/restore', { filename })
+    restoreSuccess.value = `Restore completato. Riavvia il backend per applicare le modifiche.`
+  } catch (e) {
+    restoreError.value = e.response?.data?.detail || 'Errore durante il restore'
+  } finally {
+    restoreLoading.value = ''
+  }
+}
+
+function formatBackupTs(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  return d.toLocaleString('it-IT', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
 // Grafici per culla
@@ -1047,4 +1180,51 @@ onUnmounted(() => {
   font-size: 0.95rem; background: white;
 }
 .field select:focus { outline: none; border-color: #2d8048; }
+
+/* Sistema section */
+.sistema-section { padding: 24px; }
+.sistema-card {
+  background: white; border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  padding: 28px; max-width: 640px;
+}
+.sistema-title { font-size: 1rem; font-weight: 700; color: #1f5c2e; margin-bottom: 20px; }
+
+.backup-action { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 24px; }
+.btn-backup {
+  background: #1f5c2e; color: white; border: none;
+  padding: 10px 20px; border-radius: 8px;
+  cursor: pointer; font-weight: 700; font-size: 0.9rem;
+  transition: background 0.2s;
+}
+.btn-backup:hover:not(:disabled) { background: #2d8048; }
+.btn-backup:disabled { opacity: 0.5; cursor: not-allowed; }
+.backup-ok {
+  color: #2e7d32; font-size: 0.88rem; font-weight: 600;
+}
+.backup-loading { color: #888; font-size: 0.88rem; padding: 8px 0; }
+.backup-empty { color: #aaa; font-size: 0.88rem; padding: 8px 0; }
+
+.backup-list-wrap { border-top: 1px solid #f0f0f0; padding-top: 20px; }
+.backup-list-title { font-size: 0.88rem; font-weight: 700; color: #444; margin-bottom: 12px; }
+
+.backup-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.backup-table th {
+  text-align: left; font-size: 0.75rem; color: #888; font-weight: 600;
+  padding: 6px 10px; border-bottom: 1px solid #f0f0f0;
+}
+.backup-table td { padding: 10px 10px; border-bottom: 1px solid #f7f7f7; }
+.backup-table tr:last-child td { border-bottom: none; }
+.backup-ts { color: #333; }
+.backup-size { color: #888; white-space: nowrap; }
+.backup-acts { text-align: right; }
+
+.btn-restore {
+  background: #fff3e0; color: #e65100; border: 1.5px solid #ffcc80;
+  padding: 4px 12px; border-radius: 6px;
+  cursor: pointer; font-size: 0.78rem; font-weight: 600;
+  transition: background 0.15s;
+}
+.btn-restore:hover:not(:disabled) { background: #ffe0b2; }
+.btn-restore:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
