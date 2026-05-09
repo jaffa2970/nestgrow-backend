@@ -14,7 +14,7 @@ from app.api import messages as messages_api
 from app.api import support as support_api
 from app.api import utenti as utenti_api
 from app.database import AsyncSessionLocal, engine
-from app.licensing import heartbeat, poll_pending_jwt
+from app.licensing import check_license_on_boot, heartbeat, poll_pending_jwt
 from app.messaging import sync_messages
 
 logging.basicConfig(level=logging.INFO)
@@ -155,7 +155,13 @@ async def lifespan(app: FastAPI):
     _scheduler.start()
     logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
 
-    # Run synchronously at boot so logs appear immediately and exceptions are visible
+    # Boot checks — run synchronously so logs appear immediately
+    try:
+        async with AsyncSessionLocal() as db:
+            await check_license_on_boot(db)
+    except Exception as exc:
+        logger.error("check_license_on_boot ha fallito: %s", exc, exc_info=True)
+
     try:
         await sync_messages()
     except Exception as exc:

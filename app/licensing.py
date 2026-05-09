@@ -51,6 +51,66 @@ async def get_max_culle(db: AsyncSession) -> int:
     return piano.max_culle if piano else PIANO_LIMITI_DEFAULT.get(licenza.piano, 1)
 
 
+# ── DB write helper ────────────────────────────────────────────────────────────
+
+async def _save_jwt_to_db(db: AsyncSession, token: str) -> None:
+    """Decode JWT and INSERT or UPDATE licenza_cache row (id=1)."""
+    payload = _decode_jwt_payload(token)
+    piano = payload.get("piano", "free")
+    exp = payload.get("exp")
+    valida_fino = (
+        datetime.fromtimestamp(exp, tz=timezone.utc)
+        if exp
+        else datetime.fromisoformat("2099-01-01T00:00:00+00:00")
+    )
+    existing = await get_licenza(db)
+    if existing:
+        await db.execute(
+            update(LicenzaCache)
+            .where(LicenzaCache.id == 1)
+            .values(
+                jwt_token=token,
+                piano=piano,
+                valida_fino=valida_fino,
+                aggiornato_il=datetime.now(timezone.utc),
+            )
+        )
+    else:
+        db.add(LicenzaCache(
+            id=1,
+            piano=piano,
+            valida_fino=valida_fino,
+            jwt_token=token,
+            aggiornato_il=datetime.now(timezone.utc),
+        ))
+    await db.commit()
+
+
+# ── Boot license check ─────────────────────────────────────────────────────────
+
+async def check_license_on_boot(db: AsyncSession) -> None:
+    """Called once at startup. If no JWT is cached, attempt recovery from the LS."""
+    licenza = await get_licenza(db)
+
+    if licenza and licenza.jwt_token:
+        logger.info("Licenza presente al boot (piano=%s) — ok", licenza.piano)
+        return
+
+    logger.info("Licenza assente al boot — tento recovery dal License Server...")
+
+    token = await poll_pending_jwt_once()
+    if token:
+        await _save_jwt_to_db(db, token)
+        payload = _decode_jwt_payload(token)
+        logger.info("JWT recuperato dal License Server (piano=%s)", payload.get("piano"))
+        return
+
+    if licenza:
+        logger.warning("Licenza pending — attesa approvazione admin")
+    else:
+        logger.warning("Nessuna licenza — registrazione necessaria")
+
+
 # ── JWT polling ────────────────────────────────────────────────────────────────
 
 async def poll_pending_jwt_once() -> str | None:
@@ -94,43 +154,24 @@ async def poll_pending_jwt() -> None:
     """APScheduler job: poll /license/pending every 5 min until JWT arrives.
 
     Respects the server's 60-second rate limit (called at most once per run).
-    Skips silently if a JWT is already stored.
+    Skips silently if a JWT is already stored. Works even when licenza_cache
+    is completely empty (e.g. after docker compose down -v).
     """
     from app.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
         existing = await get_licenza(db)
-        if not existing or existing.jwt_token or not existing.piva:
-            return  # Nothing to do
+        if existing and existing.jwt_token:
+            return  # Already have a valid token, nothing to do
 
     token = await poll_pending_jwt_once()
     if not token:
         return
 
-    payload = _decode_jwt_payload(token)
-    piano = payload.get("piano", "free")
-    exp = payload.get("exp")
-    valida_fino = (
-        datetime.fromtimestamp(exp, tz=timezone.utc)
-        if exp
-        else datetime.fromisoformat("2099-01-01T00:00:00")
-    )
-
     async with AsyncSessionLocal() as db:
-        existing = await get_licenza(db)
-        if existing and not existing.jwt_token:
-            await db.execute(
-                update(LicenzaCache)
-                .where(LicenzaCache.id == 1)
-                .values(
-                    jwt_token=token,
-                    piano=piano,
-                    valida_fino=valida_fino,
-                    aggiornato_il=datetime.now(timezone.utc),
-                )
-            )
-            await db.commit()
-            logger.info("JWT salvato in background (piano=%s)", piano)
+        await _save_jwt_to_db(db, token)
+        payload = _decode_jwt_payload(token)
+        logger.info("JWT salvato in background (piano=%s)", payload.get("piano"))
 
 
 # ── Heartbeat ──────────────────────────────────────────────────────────────────
