@@ -195,6 +195,23 @@ mkdir -p backups && chmod 777 backups
 - Container backend (python:3.13-slim + default-mysql-client) ha entrambi `mysqldump` e `mariadb-dump`
 - I file `.sql.gz` sono in `.gitignore` — i backup non entrano nel repo
 
+## Boot license recovery (app/licensing.py + app/main.py)
+
+`check_license_on_boot(db)` is called once in lifespan before `sync_messages()`.
+
+| DB state | LS response | Log |
+|---|---|---|
+| jwt_token present | (not called) | "Licenza presente al boot" |
+| row exists, no jwt_token | pending JWT found | "JWT recuperato dal License Server" |
+| row exists, no jwt_token | no pending JWT | "Licenza pending — attesa approvazione admin" |
+| licenza_cache empty (after -v) | no pending JWT | "Nessuna licenza — registrazione necessaria" |
+
+`_save_jwt_to_db(db, token)` — shared helper that does INSERT or UPDATE (handles fresh DB after -v).
+
+`poll_pending_jwt()` (APScheduler 5 min) — old guard `not existing or ... or not existing.piva` blocked recovery on empty DB; now skips only when `existing and existing.jwt_token`.
+
+---
+
 ## Pending / known issues
 
 - License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
