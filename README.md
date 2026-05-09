@@ -16,6 +16,7 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 - Configurazione zona con sincronizzazione MQTT verso ESP32 (soglie, intervallo lettura)
 - Dashboard Vue 3 con aggiornamento real-time
 - **Sistema backup/restore** database con download diretto via browser
+- **Recupero automatico licenza** al boot: se il JWT non è in cache, tenta il recovery dal License Server
 - Gestione utenti multi-ruolo (administrator / user)
 - Messaggi e notifiche dal License Server
 - Supporto ticket integrato con License Server
@@ -147,10 +148,12 @@ Il firmware open source per ESP32 è disponibile su:
 | Job | Intervallo | Funzione |
 |-----|-----------|---------|
 | `irrigation_tick` | 60 sec | Logica irrigazione automatica a soglie |
-| `jwt_poll` | 5 min | Ritiro JWT pendenti dal License Server |
+| `jwt_poll` | 5 min | Ritiro JWT pendenti dal License Server (funziona anche con DB vuoto) |
 | `messages_sync` | 30 min | Sincronizzazione messaggi/notifiche |
 | `license_heartbeat` | 60 min | Heartbeat verso License Server |
-| `auto_backup` | ogni giorno 02:00 | Backup automatico database |
+| `auto_backup` | ogni giorno 02:00 | Backup automatico database (mantiene ultimi 30) |
+
+All'avvio il backend esegue `check_license_on_boot()`: se nessun JWT è in cache prova automaticamente a recuperarlo dal License Server prima di avviare i job scheduler.
 
 ---
 

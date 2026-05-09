@@ -43,11 +43,14 @@ Stored in `piano_limiti` table. `PIANO_LIMITI_DEFAULT` dict in `app/licensing.py
 | Job ID | Function | Interval | Note |
 |--------|----------|----------|------|
 | license_heartbeat | heartbeat() | 60 min | POST /heartbeat to LS |
-| jwt_poll | poll_pending_jwt() | 5 min | Collect pending JWT delivery |
+| jwt_poll | poll_pending_jwt() | 5 min | Collect pending JWT delivery — works even with empty licenza_cache |
 | irrigation_tick | _irrigation_tick() | 60 sec | Auto-irrigation logic |
 | messages_sync | sync_messages() | 30 min | Also called once at boot (await, not task) |
+| auto_backup | _auto_backup() | cron 02:00 | Daily DB dump to /app/backups/, keeps last 30 |
 
-`sync_messages()` is also called with `await` at startup (before `yield`) so logs appear immediately on boot.
+Boot sequence (in lifespan, before `yield`):
+1. `check_license_on_boot(db)` — tries JWT recovery from LS if no token cached
+2. `sync_messages()` — syncs notifications from LS
 
 ---
 
@@ -215,4 +218,4 @@ mkdir -p backups && chmod 777 backups
 ## Pending / known issues
 
 - License Server 500 on PRO upgrade under investigation — suspected VIES VAT validation failing for this P.IVA; full payload/response logging added to `app/api/license.py`
-- The JWT consumed during VARCHAR(500) overflow (before migration 0006) was marked delivered on LS but not saved locally — if jwt_token is empty, admin needs to manually activate via `/license/activate`
+- JWT consumed during VARCHAR(500) overflow (before migration 0006) was marked delivered on LS but not saved locally — boot recovery won't help (LS already marked as delivered); admin must manually activate via `/license/activate`
