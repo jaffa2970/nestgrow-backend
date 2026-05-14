@@ -374,6 +374,16 @@ async def pump_command(
         raise HTTPException(status_code=503, detail="MQTT non connesso")
 
     device_id = culla.device_id or f"culla-{culla.id}"
+
+    if body.cmd == "on":
+        tank = latest_tank.get(device_id, {})
+        livello = tank.get("livello")
+        if livello is not None and livello == 0:
+            raise HTTPException(
+                status_code=403,
+                detail="Serbatoio vuoto — irrigazione manuale non consentita",
+            )
+
     await publish_pump_cmd(client, device_id, numero_zona, body.cmd, body.sec)
 
     # Keep pump_state in sync directly — publish_pump_cmd may miss it if device

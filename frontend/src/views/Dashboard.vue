@@ -96,7 +96,8 @@
                   <template v-if="isAdmin">
                     <button
                       class="btn-pump on"
-                      :disabled="zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`]"
+                      :disabled="zona.pompa_on || pumping[`${culla.id}-${zona.numero_zona}`] || culla.livello_serbatoio_pct === 0"
+                      :title="culla.livello_serbatoio_pct === 0 ? 'Serbatoio vuoto — ricarica il serbatoio' : ''"
                       @click="pumpCmd(culla.id, zona.numero_zona, 'on')"
                     >ON</button>
                     <button

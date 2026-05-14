@@ -5,6 +5,24 @@ Formato: [Semantic Versioning](https://semver.org/lang/it/)
 
 ---
 
+## [0.1.1] — 2026-05-15
+
+### Sicurezza
+
+- Pulsante ON pompa disabilitato in dashboard quando `livello_serbatoio_pct == 0` (tooltip "Serbatoio vuoto — ricarica il serbatoio")
+- Backend `POST /culle/{id}/zone/{n}/pump`: rifiuta comando `on` con HTTP 403 se serbatoio è a 0 — doppia protezione frontend + API
+
+### Bug fix
+
+- **`_irrigation_tick` non riavviava mai la pompa** — `expires_at` era calcolato in `pump_state` ma non veniva mai letto nel tick; il `continue` era fuori dal blocco `if elapsed > 5min` e scattava sempre quando la pompa risultava "on", bloccando ogni ciclo successivo. Fix: aggiunto caso `expires_at` per riconoscere l'auto-stop normale dell'ESP32, chiudere il record `Irrigazione` con `esito="ok"` e ri-valutare l'umidità nello stesso tick
+
+### Miglioramenti
+
+- Grafici culla: polling automatico ogni 60 secondi quando la sezione è aperta; indicatore "🔄 Aggiornamento..." durante il refresh e "Aggiornato alle HH:MM:SS" dopo ogni fetch riuscito; cambio periodo resetta e ricrea il timer
+- Log `_irrigation_tick` migliorato: aggiunto `CHECK: X% < Y% = True/False` prima di ogni decisione irrigazione; log `SKIP: pompa ON da Xs (scade tra Ys)` e `Auto-stop: pompa off dopo Xs` per visibilità completa del ciclo
+
+---
+
 ## [0.1.0] — 2026-05-07
 
 ### Aggiunto

@@ -12,9 +12,10 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 - Sensori umidità suolo capacitivi per zona
 - Sensore livello serbatoio centralizzato
 - Logica irrigazione automatica a soglie
-- **Grafici storici** per zona: umidità, serbatoio, irrigazioni, efficacia (ECharts)
+- **Grafici storici** per zona: umidità, serbatoio, irrigazioni, efficacia (ECharts) con **aggiornamento automatico ogni 60 secondi** e indicatore "Aggiornato alle HH:MM:SS"
 - Configurazione zona con sincronizzazione MQTT verso ESP32 (soglie, intervallo lettura)
 - Dashboard Vue 3 con aggiornamento real-time
+- **Protezione serbatoio vuoto**: pulsante pompa ON disabilitato in dashboard + blocco HTTP 403 dal backend quando livello è 0
 - **Sistema backup/restore** database con download diretto via browser
 - **Recupero automatico licenza** al boot: se il JWT non è in cache, tenta il recovery dal License Server
 - **Pulizia automatica** letture storiche (retention configurabile, default 30 giorni, cron 03:00)

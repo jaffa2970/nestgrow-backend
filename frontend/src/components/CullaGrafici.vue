@@ -8,6 +8,8 @@
         :class="['period-btn', { active: periodo === p.value }]"
         @click="setPeriodo(p.value)"
       >{{ p.label }}</button>
+      <span v-if="refreshing" class="refresh-status refreshing">🔄 Aggiornamento...</span>
+      <span v-else-if="ultimoAggiornamento" class="refresh-status">Aggiornato alle {{ ultimoAggiornamento }}</span>
     </div>
 
     <div v-if="loading" class="chart-loading">⏳ Caricamento grafici...</div>
@@ -48,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -79,14 +81,22 @@ const periods = [
   { label: '30gg', value: 30 },
 ]
 
-const periodo    = ref(7)
-const loading    = ref(false)
-const fetchError = ref('')
-const stats      = ref(null)
-const statsIrr   = ref(null)
+const periodo             = ref(7)
+const loading             = ref(false)
+const refreshing          = ref(false)
+const fetchError          = ref('')
+const stats               = ref(null)
+const statsIrr            = ref(null)
+const ultimoAggiornamento = ref('')
+
+let pollInterval = null
 
 async function fetchStats() {
-  loading.value = true
+  if (stats.value) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
   fetchError.value = ''
   try {
     const [s, si] = await Promise.all([
@@ -95,19 +105,34 @@ async function fetchStats() {
     ])
     stats.value    = s.data
     statsIrr.value = si.data
+    ultimoAggiornamento.value = new Date().toLocaleTimeString('it-IT', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
   } catch (e) {
     fetchError.value = e.response?.data?.detail || 'Errore caricamento grafici'
   } finally {
-    loading.value = false
+    loading.value    = false
+    refreshing.value = false
   }
 }
 
 function setPeriodo(v) {
-  periodo.value = v
+  periodo.value  = v
+  stats.value    = null
+  statsIrr.value = null
+  clearInterval(pollInterval)
   fetchStats()
+  pollInterval = setInterval(fetchStats, 60000)
 }
 
-onMounted(fetchStats)
+onMounted(() => {
+  fetchStats()
+  pollInterval = setInterval(fetchStats, 60000)
+})
+
+onUnmounted(() => {
+  clearInterval(pollInterval)
+})
 
 // ── Guards ──────────────────────────────────────────────────────────────────
 
@@ -378,6 +403,13 @@ const scatterOption = computed(() => {
 }
 .period-btn.active { background: #1f5c2e; color: white; border-color: #1f5c2e; }
 .period-btn:hover:not(.active) { border-color: #2d8048; color: #1f5c2e; }
+
+.refresh-status {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #888;
+}
+.refresh-status.refreshing { color: #1976d2; }
 
 .chart-loading { text-align: center; padding: 40px; color: #888; }
 .chart-error {

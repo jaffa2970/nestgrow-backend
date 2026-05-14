@@ -105,11 +105,14 @@ async def _irrigation_tick() -> None:
                     continue
 
                 state = pump_state.get(zona.id, {})
+                now_utc = datetime.now(timezone.utc)
 
-                # Safety: pump ON for > 5 minutes → force OFF
                 if state.get("on") and state.get("since"):
-                    elapsed = datetime.now(timezone.utc) - state["since"]
+                    elapsed = now_utc - state["since"]
+                    expires_at = state.get("expires_at")
+
                     if elapsed > timedelta(minutes=5):
+                        # Safety timeout: pump didn't auto-stop → force OFF via MQTT
                         logger.warning(
                             "  Safety: pompa culla %d zona %d on >5min → forzo OFF",
                             culla.id, zona.numero_zona,
@@ -126,15 +129,51 @@ async def _irrigation_tick() -> None:
                         )
                         irr = irr_r.scalar_one_or_none()
                         if irr:
-                            irr.ts_fine = datetime.now(timezone.utc)
+                            irr.ts_fine = now_utc
                             irr.durata_sec = int(elapsed.total_seconds())
                             irr.esito = "timeout"
                         await db.commit()
-                    continue
+                        continue
+
+                    elif expires_at and now_utc >= expires_at:
+                        # Normal auto-stop: duration elapsed, ESP32 already stopped the pump
+                        pump_state[zona.id] = {"on": False, "since": None, "expires_at": None}
+                        irr_r = await db.execute(
+                            select(Irrigazione)
+                            .where(
+                                Irrigazione.zona_id == zona.id,
+                                Irrigazione.ts_fine.is_(None),
+                            )
+                            .order_by(Irrigazione.ts_inizio.desc())
+                            .limit(1)
+                        )
+                        irr = irr_r.scalar_one_or_none()
+                        if irr:
+                            irr.ts_fine = now_utc
+                            irr.durata_sec = int(elapsed.total_seconds())
+                            irr.esito = "ok"
+                        await db.commit()
+                        logger.info(
+                            "  → Auto-stop: pompa off dopo %.0fs — ri-valuto umidità",
+                            elapsed.total_seconds(),
+                        )
+                        # Fall through to re-evaluate umidita
+
+                    else:
+                        logger.info(
+                            "  → SKIP: pompa ON da %.0fs (scade tra %.0fs)",
+                            elapsed.total_seconds(),
+                            (expires_at - now_utc).total_seconds() if expires_at else 0,
+                        )
+                        continue
 
                 soglia = zona.umidita_soglia_min
                 durata = zona.durata_irrigazione_sec or 20
-                if umidita < soglia and not state.get("on"):
+                logger.info(
+                    "  CHECK: %.1f%% < %.1f%% = %s",
+                    umidita, soglia, umidita < soglia,
+                )
+                if umidita < soglia and not pump_state.get(zona.id, {}).get("on"):
                     logger.info(
                         "  → IRRIGAZIONE: %.1f%% < %.1f%% → pompa ON per %ds",
                         umidita, soglia, durata,
@@ -143,7 +182,7 @@ async def _irrigation_tick() -> None:
                     db.add(
                         Irrigazione(
                             zona_id=zona.id,
-                            ts_inizio=datetime.now(timezone.utc),
+                            ts_inizio=now_utc,
                             umidita_pre=umidita,
                             trigger="soglia",
                         )
