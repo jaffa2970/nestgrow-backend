@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, culle
 from app.api import admin as admin_api
+from app.api import export as export_api
+from app.api import impostazioni as impostazioni_api
 from app.api import license as license_api
 from app.api import messages as messages_api
 from app.api import support as support_api
@@ -131,6 +133,20 @@ async def _irrigation_tick() -> None:
                     await db.commit()
 
 
+async def _cleanup_old_readings() -> None:
+    from sqlalchemy import delete
+    from app.models import Lettura
+    from app.api.impostazioni import get_impostazione
+
+    async with AsyncSessionLocal() as db:
+        retention = await get_impostazione(db, "retention_giorni", "30")
+        giorni = int(retention)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=giorni)
+        result = await db.execute(delete(Lettura).where(Lettura.ts < cutoff))
+        await db.commit()
+        logger.info("Cleanup: eliminati %d letture più vecchie di %d giorni", result.rowcount, giorni)
+
+
 async def _auto_backup() -> None:
     from app.api.admin import run_backup
     logger.info("=== Auto backup database ===")
@@ -152,6 +168,7 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(_irrigation_tick, "interval", seconds=60, id="irrigation_tick")
     _scheduler.add_job(sync_messages, "interval", minutes=30, id="messages_sync")
     _scheduler.add_job(_auto_backup, "cron", hour=2, minute=0, id="auto_backup")
+    _scheduler.add_job(_cleanup_old_readings, "cron", hour=3, minute=0, id="cleanup_readings")
     _scheduler.start()
     logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
 
@@ -198,6 +215,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(admin_api.router)
 app.include_router(culle.router)
+app.include_router(export_api.router)
+app.include_router(impostazioni_api.router)
 app.include_router(license_api.router)
 app.include_router(messages_api.router)
 app.include_router(support_api.router)

@@ -9,6 +9,8 @@ export default defineConfig({
       '/auth':  { target: 'http://localhost:8000', changeOrigin: true },
       '/admin': { target: 'http://localhost:8000', changeOrigin: true },
       '/culle': { target: 'http://localhost:8000', changeOrigin: true },
+      '/export': { target: 'http://localhost:8000', changeOrigin: true },
+      '/impostazioni': { target: 'http://localhost:8000', changeOrigin: true },
       '/license': { target: 'http://localhost:8000', changeOrigin: true },
       '/messages': { target: 'http://localhost:8000', changeOrigin: true },
       '/support': { target: 'http://localhost:8000', changeOrigin: true },

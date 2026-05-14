@@ -343,6 +343,61 @@
           <div v-if="uploadRestoreError" class="alert-error small">{{ uploadRestoreError }}</div>
         </div>
       </div>
+
+      <!-- Impostazioni -->
+      <div class="sistema-card">
+        <h3 class="sistema-title">⚙️ Gestione dati storici</h3>
+        <div class="field impost-field">
+          <label>Conserva storico per: <strong>{{ retentionGiorni }} giorni</strong></label>
+          <input
+            v-model.number="retentionGiorni"
+            type="number" min="7" max="365"
+            class="input-small"
+          />
+          <p class="impost-hint">Le letture più vecchie vengono eliminate automaticamente ogni notte alle 3:00.</p>
+        </div>
+        <div class="impost-actions">
+          <button class="btn-backup" :disabled="impostazioniSaving" @click="saveImpostazioni">
+            <span v-if="impostazioniSaving">⏳ Salvataggio...</span>
+            <span v-else>Salva impostazioni</span>
+          </button>
+          <button class="btn-cleanup" :disabled="cleanupLoading" @click="doCleanupNow">
+            <span v-if="cleanupLoading">⏳ Pulizia in corso...</span>
+            <span v-else>🗑️ Esegui pulizia ora</span>
+          </button>
+        </div>
+        <div v-if="impostazioniSuccess" class="backup-ok">✅ {{ impostazioniSuccess }}</div>
+        <div v-if="impostazioniError" class="alert-error small">{{ impostazioniError }}</div>
+      </div>
+
+      <!-- Export dati -->
+      <div class="sistema-card">
+        <h3 class="sistema-title">📊 Export dati</h3>
+        <div class="export-period-row">
+          <span class="export-period-label">Periodo:</span>
+          <button
+            v-for="p in exportPeriodi" :key="p.giorni"
+            class="btn-period"
+            :class="{ active: exportGiorni === p.giorni }"
+            @click="exportGiorni = p.giorni"
+          >{{ p.label }}</button>
+        </div>
+        <div class="export-btns">
+          <button class="btn-export" :disabled="exportLoading === 'letture'" @click="doExport('letture')">
+            <span v-if="exportLoading === 'letture'">⏳ Download...</span>
+            <span v-else>📥 Scarica letture umidità</span>
+          </button>
+          <button class="btn-export" :disabled="exportLoading === 'irrigazioni'" @click="doExport('irrigazioni')">
+            <span v-if="exportLoading === 'irrigazioni'">⏳ Download...</span>
+            <span v-else>📥 Scarica irrigazioni</span>
+          </button>
+          <button class="btn-export btn-export-full" :disabled="exportLoading === 'completo'" @click="doExport('completo')">
+            <span v-if="exportLoading === 'completo'">⏳ Download...</span>
+            <span v-else>📥 Scarica export completo</span>
+          </button>
+        </div>
+        <div v-if="exportError" class="alert-error small">{{ exportError }}</div>
+      </div>
     </div>
 
     <!-- ===== ADD CULLA MODAL ===== -->
@@ -695,6 +750,24 @@ function formatDate(dt) {
   })
 }
 
+// Sistema / Impostazioni
+const retentionGiorni      = ref(30)
+const impostazioniSaving   = ref(false)
+const impostazioniSuccess  = ref('')
+const impostazioniError    = ref('')
+const cleanupLoading       = ref(false)
+
+// Sistema / Export
+const exportGiorni  = ref(30)
+const exportLoading = ref('')
+const exportError   = ref('')
+const exportPeriodi = [
+  { label: '7gg',  giorni: 7 },
+  { label: '30gg', giorni: 30 },
+  { label: '90gg', giorni: 90 },
+  { label: 'Tutto', giorni: 0 },
+]
+
 // Sistema / Backup
 const backupList           = ref([])
 const backupListLoading    = ref(false)
@@ -720,12 +793,20 @@ async function openSistema() {
   restoreError.value = ''
   uploadRestoreSuccess.value = ''
   uploadRestoreError.value = ''
+  impostazioniSuccess.value = ''
+  impostazioniError.value = ''
+  exportError.value = ''
   backupListLoading.value = true
   try {
-    const { data } = await axios.get('/admin/backups')
-    backupList.value = data.backups
+    const [backups, impost] = await Promise.all([
+      axios.get('/admin/backups'),
+      axios.get('/impostazioni'),
+    ])
+    backupList.value = backups.data.backups
+    const ret = impost.data.impostazioni.find(i => i.chiave === 'retention_giorni')
+    if (ret) retentionGiorni.value = parseInt(ret.valore)
   } catch (e) {
-    backupError.value = e.response?.data?.detail || 'Errore caricamento lista backup'
+    backupError.value = e.response?.data?.detail || 'Errore caricamento dati sistema'
   } finally {
     backupListLoading.value = false
   }
@@ -843,6 +924,59 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+async function saveImpostazioni() {
+  impostazioniSaving.value = true
+  impostazioniSuccess.value = ''
+  impostazioniError.value = ''
+  try {
+    await axios.put('/impostazioni/retention_giorni', { valore: String(retentionGiorni.value) })
+    impostazioniSuccess.value = `Impostazioni salvate. Pulizia automatica ogni notte alle 3:00.`
+  } catch (e) {
+    impostazioniError.value = e.response?.data?.detail || 'Errore salvataggio impostazioni'
+  } finally {
+    impostazioniSaving.value = false
+  }
+}
+
+async function doCleanupNow() {
+  if (!confirm(`Eliminare tutte le letture più vecchie di ${retentionGiorni.value} giorni?\n\nL'operazione non è reversibile.`)) return
+  cleanupLoading.value = true
+  impostazioniSuccess.value = ''
+  impostazioniError.value = ''
+  try {
+    const { data } = await axios.post('/impostazioni/cleanup-now')
+    impostazioniSuccess.value = `✅ Eliminati ${data.deleted} record più vecchi di ${data.giorni} giorni`
+  } catch (e) {
+    impostazioniError.value = e.response?.data?.detail || 'Errore durante la pulizia'
+  } finally {
+    cleanupLoading.value = false
+  }
+}
+
+async function doExport(tipo) {
+  exportLoading.value = tipo
+  exportError.value = ''
+  try {
+    const response = await axios.get(`/export/${tipo}`, {
+      params: { giorni: exportGiorni.value },
+      responseType: 'blob',
+    })
+    const disposition = response.headers['content-disposition'] || ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : `nestgrow_export.xlsx`
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    exportError.value = 'Errore durante l\'export'
+  } finally {
+    exportLoading.value = ''
+  }
 }
 
 // Grafici per culla
@@ -1377,4 +1511,39 @@ onUnmounted(() => {
 }
 .btn-restore-upload:hover:not(:disabled) { background: #ffcdd2; }
 .btn-restore-upload:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Impostazioni */
+.impost-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.impost-hint { font-size: 0.8rem; color: #888; margin: 0; }
+.impost-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+
+.btn-cleanup {
+  background: #fff8e1; color: #e65100; border: 1.5px solid #ffcc80;
+  padding: 10px 18px; border-radius: 8px; cursor: pointer;
+  font-weight: 700; font-size: 0.88rem; transition: background 0.15s;
+}
+.btn-cleanup:hover:not(:disabled) { background: #ffe0b2; }
+.btn-cleanup:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Export */
+.export-period-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.export-period-label { font-size: 0.85rem; color: #555; font-weight: 600; }
+.btn-period {
+  padding: 5px 14px; border-radius: 6px; border: 1.5px solid #ccc;
+  background: white; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+  transition: all 0.15s;
+}
+.btn-period.active { background: #1f5c2e; color: white; border-color: #1f5c2e; }
+.btn-period:hover:not(.active) { border-color: #1f5c2e; color: #1f5c2e; }
+
+.export-btns { display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+.btn-export {
+  background: #e8f5e9; color: #1b5e20; border: 1.5px solid #a5d6a7;
+  padding: 10px 18px; border-radius: 8px; cursor: pointer;
+  font-weight: 600; font-size: 0.88rem; text-align: left;
+  transition: background 0.15s;
+}
+.btn-export:hover:not(:disabled) { background: #c8e6c9; }
+.btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-export-full { font-weight: 700; border-color: #2d6a4f; color: #1f4033; }
 </style>

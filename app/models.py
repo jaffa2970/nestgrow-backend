@@ -150,6 +150,14 @@ class Utente(Base):
     creato_il: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class Impostazioni(Base):
+    __tablename__ = "impostazioni"
+
+    chiave: Mapped[str] = mapped_column(String(50), primary_key=True)
+    valore: Mapped[str] = mapped_column(String(200), nullable=False)
+    descrizione: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+
 class MessaggioCache(Base):
     __tablename__ = "messaggi_cache"
 
