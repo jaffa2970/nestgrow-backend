@@ -74,6 +74,7 @@ class CullaOut(BaseModel):
     attiva: bool
     creato_il: datetime
     zone: list[ZonaOut] = []
+    livello_serbatoio_pct: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -164,6 +165,9 @@ async def _load_zone(culla_id: int, db: AsyncSession) -> list[Zona]:
 def _build_culla_out(
     culla: Culla, zone: list[Zona], db_readings: dict[int, dict] | None = None
 ) -> CullaOut:
+    device_id = culla.device_id or f"culla-{culla.id}"
+    tank = latest_tank.get(device_id, {})
+    livello = tank.get("livello")
     return CullaOut(
         id=culla.id,
         nome=culla.nome,
@@ -171,6 +175,7 @@ def _build_culla_out(
         attiva=culla.attiva,
         creato_il=culla.creato_il,
         zone=[_build_zona_out(z, (db_readings or {}).get(z.id)) for z in zone],
+        livello_serbatoio_pct=livello,
     )
 
 

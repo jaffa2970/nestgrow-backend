@@ -65,17 +65,27 @@
           </div>
         </div>
 
-        <!-- TOS (only on initial registration) -->
+        <!-- TOS: checkbox on first registration, accepted links in upgrade mode -->
         <div v-if="!isUpgrade" class="field tos-field">
           <label class="tos-label">
             <input v-model="form.tos_accettato" type="checkbox" />
             <span>
               Accetto i
-              <a href="https://license.lake8.dev/licenza" target="_blank">Licenza d'uso</a>
+              <a href="https://license.lake8.dev/tos" target="_blank" rel="noopener">Licenza d'uso</a>
               e la
-              <a href="https://license.lake8.dev/privacy" target="_blank">Privacy Policy</a>
+              <a href="https://license.lake8.dev/privacy" target="_blank" rel="noopener">Privacy Policy</a>
             </span>
           </label>
+        </div>
+        <div v-else class="field tos-accepted">
+          <p class="tos-accepted-line">
+            <span class="tos-check">✓</span>
+            <a href="https://license.lake8.dev/tos" target="_blank" rel="noopener" class="tos-link-accepted">Licenza d'uso accettata</a>
+          </p>
+          <p class="tos-accepted-line">
+            <span class="tos-check">✓</span>
+            <a href="https://license.lake8.dev/privacy" target="_blank" rel="noopener" class="tos-link-accepted">Privacy Policy accettata</a>
+          </p>
         </div>
 
         <p v-if="error" class="alert-error">{{ error }}</p>
@@ -325,6 +335,12 @@ onUnmounted(() => {
 }
 .tos-label input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
 .tos-label a { color: #1f5c2e; }
+
+.tos-accepted { margin-top: 4px; }
+.tos-accepted-line { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+.tos-check { color: #aaa; font-size: 0.82rem; flex-shrink: 0; }
+.tos-link-accepted { color: #999; font-size: 0.85rem; text-decoration: underline; }
+.tos-link-accepted:hover { color: #555; }
 
 .alert-error {
   background: #ffebee; color: #c62828;

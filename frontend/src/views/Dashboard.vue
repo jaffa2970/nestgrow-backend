@@ -56,6 +56,12 @@
             <button class="btn-icon" title="Disattiva culla" @click="deleteCulla(culla.id)">✕</button>
           </div>
 
+          <!-- Tank empty banner -->
+          <div v-if="culla.livello_serbatoio_pct === 0" class="tank-empty-banner">
+            ⚠️ Serbatoio vuoto — le pompe automatiche sono disabilitate per protezione.
+            Ricarica il serbatoio per riprendere l'irrigazione automatica.
+          </div>
+
           <!-- 4 zone rows -->
           <table class="zone-table">
             <thead>
@@ -172,6 +178,10 @@
             <button class="btn-upgrade-full" @click="$router.push('/register?upgrade=true')">
               🔄 Aggiorna piano
             </button>
+          </div>
+          <div class="license-docs">
+            <a href="https://license.lake8.dev/tos" target="_blank" rel="noopener">📄 Licenza d'uso</a>
+            <a href="https://license.lake8.dev/privacy" target="_blank" rel="noopener">🔏 Privacy Policy</a>
           </div>
         </div>
       </template>
@@ -1208,13 +1218,27 @@ onUnmounted(() => {
 .btn-edit:hover { background: #f0f0f0; }
 .saved-flash { color: #2e7d32; font-size: 0.78rem; font-weight: 700; }
 
+/* Tank empty banner */
+.tank-empty-banner {
+  background: #fff3e0; color: #bf360c;
+  border-left: 4px solid #e64a19;
+  padding: 12px 16px;
+  font-size: 0.88rem; line-height: 1.5; font-weight: 600;
+}
+
 /* License section */
 .license-section { padding: 24px; }
 .license-card {
   background: white; border-radius: 16px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-  padding: 28px; max-width: 540px;
+  padding: 28px;
 }
+.license-docs {
+  display: flex; gap: 20px; padding-top: 16px;
+  border-top: 1px solid #f0f0f0; margin-top: 8px;
+}
+.license-docs a { color: #888; font-size: 0.82rem; text-decoration: underline; }
+.license-docs a:hover { color: #1f5c2e; }
 .license-row {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 0; border-bottom: 1px solid #f0f0f0; gap: 16px;
@@ -1436,11 +1460,12 @@ onUnmounted(() => {
 .field select:focus { outline: none; border-color: #2d8048; }
 
 /* Sistema section */
-.sistema-section { padding: 24px; }
+.sistema-section { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
 .sistema-card {
   background: white; border-radius: 16px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-  padding: 28px; max-width: 640px;
+  border: 1px solid #e8e8e8;
+  padding: 28px;
 }
 .sistema-title { font-size: 1rem; font-weight: 700; color: #1f5c2e; margin-bottom: 20px; }
 

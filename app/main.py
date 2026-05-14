@@ -37,8 +37,11 @@ async def _irrigation_tick() -> None:
     )
     from sqlalchemy import select
 
+    logger.info("=== IRRIGATION TICK ===")
+
     client = await get_client()
     if client is None:
+        logger.warning("  MQTT non connesso — tick saltato")
         return
 
     async with AsyncSessionLocal() as db:
@@ -46,38 +49,59 @@ async def _irrigation_tick() -> None:
             select(Culla).where(Culla.attiva == True)
         )
         culle = culle_result.scalars().all()
+        logger.info("Culle attive: %d", len(culle))
 
         for culla in culle:
             device_id = culla.device_id or f"culla-{culla.id}"
             tank = latest_tank.get(device_id, {})
             tank_level = tank.get("livello", 100.0)
+            logger.info("Culla %d — device_id: %s — serbatoio: %s%%",
+                        culla.id, device_id,
+                        f"{tank_level:.1f}" if tank_level is not None else "N/A")
 
             if tank_level is not None and tank_level < 10.0:
                 logger.warning(
-                    "Serbatoio culla %d sotto 10%% (%.1f) — irrigazione bloccata",
-                    culla.id,
-                    tank_level,
+                    "  Culla %d: serbatoio vuoto (%.1f%%) — irrigazione bloccata",
+                    culla.id, tank_level,
                 )
                 continue
 
+            # Fetch all active zones (no pre-filter) so we can log skip reasons
             zones_result = await db.execute(
-                select(Zona).where(
-                    Zona.culla_id == culla.id,
-                    Zona.attiva == True,
-                    Zona.irrigazione_auto == True,
-                    Zona.umidita_soglia_min.is_not(None),
-                )
+                select(Zona).where(Zona.culla_id == culla.id, Zona.attiva == True)
             )
             zone = zones_result.scalars().all()
 
             for zona in zone:
-                reading = latest_readings.get(zona.id, {})
-                ts = reading.get("ts")
-                if not ts or (datetime.now(timezone.utc) - ts) > timedelta(minutes=5):
+                logger.info("  Zona %d — nome: %s — auto: %s — soglia_min: %s",
+                            zona.numero_zona, zona.nome or "—",
+                            zona.irrigazione_auto, zona.umidita_soglia_min)
+
+                if not zona.irrigazione_auto:
+                    logger.info("  → SKIP: irrigazione_auto disabilitata")
+                    continue
+                if zona.umidita_soglia_min is None:
+                    logger.info("  → SKIP: soglia_min non configurata")
                     continue
 
+                reading = latest_readings.get(zona.id, {})
+                ts = reading.get("ts")
                 umidita = reading.get("umidita_pct")
+
+                if not ts:
+                    logger.info("  → SKIP: nessuna lettura MQTT in memoria (zona_id=%d)", zona.id)
+                    continue
+
+                age_sec = (datetime.now(timezone.utc) - ts).total_seconds()
+                logger.info("  Ultima lettura MQTT: %s%% — ts: %s — età: %.0fs",
+                            f"{umidita:.1f}" if umidita is not None else "None", ts, age_sec)
+
+                if age_sec > 300:
+                    logger.info("  → SKIP: lettura troppo vecchia (%.0fs > 300s)", age_sec)
+                    continue
+
                 if umidita is None:
+                    logger.info("  → SKIP: umidità None nella lettura")
                     continue
 
                 state = pump_state.get(zona.id, {})
@@ -87,9 +111,8 @@ async def _irrigation_tick() -> None:
                     elapsed = datetime.now(timezone.utc) - state["since"]
                     if elapsed > timedelta(minutes=5):
                         logger.warning(
-                            "Safety: pompa culla %d zona %d on >5min → forzo OFF",
-                            culla.id,
-                            zona.numero_zona,
+                            "  Safety: pompa culla %d zona %d on >5min → forzo OFF",
+                            culla.id, zona.numero_zona,
                         )
                         await publish_pump_cmd(client, device_id, zona.numero_zona, "off")
                         irr_r = await db.execute(
@@ -109,17 +132,12 @@ async def _irrigation_tick() -> None:
                         await db.commit()
                     continue
 
-                # Trigger irrigation when humidity drops below zone threshold
                 soglia = zona.umidita_soglia_min
                 durata = zona.durata_irrigazione_sec or 20
                 if umidita < soglia and not state.get("on"):
                     logger.info(
-                        "Culla %d zona %d: umidità %.1f < soglia %.1f → irrigazione %ds",
-                        culla.id,
-                        zona.numero_zona,
-                        umidita,
-                        soglia,
-                        durata,
+                        "  → IRRIGAZIONE: %.1f%% < %.1f%% → pompa ON per %ds",
+                        umidita, soglia, durata,
                     )
                     await publish_pump_cmd(client, device_id, zona.numero_zona, "on", durata)
                     db.add(
@@ -131,6 +149,8 @@ async def _irrigation_tick() -> None:
                         )
                     )
                     await db.commit()
+                else:
+                    logger.info("  → OK: %.1f%% >= %.1f%% (nessuna azione)", umidita, soglia)
 
 
 async def _cleanup_old_readings() -> None:
