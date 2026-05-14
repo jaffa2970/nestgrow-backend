@@ -17,6 +17,8 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 - Dashboard Vue 3 con aggiornamento real-time
 - **Sistema backup/restore** database con download diretto via browser
 - **Recupero automatico licenza** al boot: se il JWT non è in cache, tenta il recovery dal License Server
+- **Pulizia automatica** letture storiche (retention configurabile, default 30 giorni, cron 03:00)
+- **Export Excel** letture, irrigazioni e riepilogo per zona (openpyxl, 3 sheet, formattazione)
 - Gestione utenti multi-ruolo (administrator / user)
 - Messaggi e notifiche dal License Server
 - Supporto ticket integrato con License Server
@@ -152,8 +154,25 @@ Il firmware open source per ESP32 è disponibile su:
 | `messages_sync` | 30 min | Sincronizzazione messaggi/notifiche |
 | `license_heartbeat` | 60 min | Heartbeat verso License Server |
 | `auto_backup` | ogni giorno 02:00 | Backup automatico database (mantiene ultimi 30) |
+| `cleanup_readings` | ogni giorno 03:00 | Elimina letture più vecchie di `retention_giorni` (default 30) |
 
 All'avvio il backend esegue `check_license_on_boot()`: se nessun JWT è in cache prova automaticamente a recuperarlo dal License Server prima di avviare i job scheduler.
+
+---
+
+## Export dati
+
+NestGrow supporta l'export dei dati storici in formato Excel (`.xlsx`).
+
+| Endpoint | Sheet | Contenuto |
+|---|---|---|
+| `GET /export/letture?giorni=N` | Letture umidità | Data/Ora, Culla, Zona, Coltura, Umidità %, Serbatoio % |
+| `GET /export/irrigazioni?giorni=N` | Irrigazioni | Inizio/fine, Culla, Zona, Durata, pre/post %, Trigger, Esito |
+| `GET /export/completo?giorni=N` | Tutti e 3 | Letture + Irrigazioni + Riepilogo aggregato per zona |
+
+`giorni=0` esporta tutto il database senza filtro temporale.
+
+Dalla dashboard (tab ⚙️ Sistema) è disponibile un selettore periodo (7gg / 30gg / 90gg / Tutto) con pulsanti di download diretto.
 
 ---
 

@@ -47,6 +47,7 @@ Stored in `piano_limiti` table. `PIANO_LIMITI_DEFAULT` dict in `app/licensing.py
 | irrigation_tick | _irrigation_tick() | 60 sec | Auto-irrigation logic |
 | messages_sync | sync_messages() | 30 min | Also called once at boot (await, not task) |
 | auto_backup | _auto_backup() | cron 02:00 | Daily DB dump to /app/backups/, keeps last 30 |
+| cleanup_readings | _cleanup_old_readings() | cron 03:00 | Delete Lettura rows older than retention_giorni (from impostazioni table, default 30) |
 
 Boot sequence (in lifespan, before `yield`):
 1. `check_license_on_boot(db)` — tries JWT recovery from LS if no token cached
@@ -65,6 +66,7 @@ Boot sequence (in lifespan, before `yield`):
 - 0007 messaggi_tipo_varchar (ENUM → VARCHAR(50) for LS notification types)
 - 0008 utenti (user management table, seeds admin from ADMIN_PASSWORD env)
 - 0009 zona_intervallo_lettura (adds intervallo_lettura_sec INT NOT NULL default 60 to zone table)
+- 0010 impostazioni (creates impostazioni table, seeds retention_giorni=30)
 
 ---
 
@@ -120,6 +122,7 @@ All endpoints are at root (no `/api/v1/` prefix — that was wrong):
 - `LicenzaCache` — single row (id=1), stores piano, valida_fino, jwt_token (TEXT), piva, email
 - `Utente` — username, password_hash (bcrypt), ruolo (administrator/user), attivo
 - `MessaggioCache` — tipo is VARCHAR(50) (was ENUM — LS sends "aggiornamento", "comunicazione" etc.)
+- `Impostazioni` — chiave (PK VARCHAR 50), valore (VARCHAR 200), descrizione; seeded with `retention_giorni=30`
 - `Culla`, `Zona`, `Lettura`, `Irrigazione`, `PianoLimiti`
 - `Zona` fields of note: `umidita_soglia_min/max`, `durata_irrigazione_sec`, `irrigazione_auto`, `intervallo_lettura_sec` (INT, default 60 — seconds between sensor reads, synced to ESP32 via MQTT cmd/config)
 
@@ -152,6 +155,33 @@ Inline expandable section per ogni culla card (pulsante "📊 Grafici"):
 - Grafico 3: bar chart orizzontale irrigazioni per zona con tooltip stats
 - Grafico 4: scatter efficacia irrigazione (pre→post) con diagonale di riferimento
 - Griglia 2 colonne desktop / 1 colonna mobile; "Nessun dato" se periodo vuoto
+
+## Impostazioni API (app/api/impostazioni.py) — require_admin
+
+- `GET /impostazioni` → lista tutte le chiavi/valori/descrizioni
+- `PUT /impostazioni/{chiave}` → aggiorna valore; `retention_giorni` validato 7–365
+- `POST /impostazioni/cleanup-now` → esegue la pulizia manuale ora, ritorna `{"deleted": N, "giorni": N}`
+
+Helper `get_impostazione(db, chiave, default)` usato anche dal job `_cleanup_old_readings`.
+
+Frontend (tab ⚙️ Sistema): campo numerico retention + pulsanti "Salva" e "Esegui pulizia ora".
+
+---
+
+## Export Excel (app/api/export.py) — require_admin
+
+- `GET /export/letture?giorni=N` — Sheet: Data/Ora, Culla, Zona, Coltura, Umidità %, Livello Serbatoio %
+- `GET /export/irrigazioni?giorni=N` — Sheet: Data/Ora inizio/fine, Culla, Zona, Coltura, Durata, pre/post %, Trigger, Esito
+- `GET /export/completo?giorni=N` — tutti e 3 gli sheet in un file (include riepilogo per zona)
+- `giorni=0` → nessun filtro temporale (tutto il DB)
+- Formato: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- Formattazione: intestazioni bold bianche su sfondo #2d6a4f, righe alternate #F5F5F5, freeze riga 1, larghezze colonne preset
+- Nome file: `nestgrow_export_YYYYMMDD.xlsx`
+- Dependency: `openpyxl>=3.1.0` in requirements.txt
+
+Frontend (tab ⚙️ Sistema): selettore periodo 7gg/30gg/90gg/Tutto + 3 pulsanti download blob.
+
+---
 
 ## Backup & Restore system
 
