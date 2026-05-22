@@ -16,6 +16,10 @@ __pycache__/
 dist/
 build/
 .venv/
+
+# Cython — generati dal build, non committare
+*.so
+*.c
 venv/
 env/
 .pytest_cache/
