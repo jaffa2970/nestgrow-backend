@@ -1,0 +1,147 @@
+name: Package release assets
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create release package
+        run: |
+          DIR="nestgrow-docker-${{ steps.version.outputs.VERSION }}"
+          mkdir -p "$DIR/mosquitto/config"
+
+          cat > "$DIR/docker-compose.yml" << 'COMPOSE_EOF'
+          services:
+            mosquitto:
+              image: eclipse-mosquitto:2
+              container_name: nestgrow-mqtt
+              ports:
+                - "1883:1883"
+              volumes:
+                - ./mosquitto/config:/mosquitto/config
+                - mosquitto_data:/mosquitto/data
+              restart: unless-stopped
+
+            db:
+              image: mariadb:11
+              container_name: nestgrow-db
+              environment:
+                MYSQL_DATABASE: ${DB_NAME:-nestgrow_db}
+                MYSQL_USER: ${DB_USER:-nestgrow}
+                MYSQL_PASSWORD: ${DB_PASSWORD}
+                MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+              volumes:
+                - mariadb_data:/var/lib/mysql
+              healthcheck:
+                test: ["CMD", "healthcheck.sh", "--connect"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+              restart: unless-stopped
+
+            backend:
+              image: ghcr.io/jaffa2970/nestgrow-backend:VERSION_PLACEHOLDER
+              container_name: nestgrow-backend
+              depends_on:
+                db:
+                  condition: service_healthy
+                mosquitto:
+                  condition: service_started
+              ports:
+                - "8000:8000"
+              environment:
+                DB_URL: mysql+aiomysql://${DB_USER:-nestgrow}:${DB_PASSWORD}@db/${DB_NAME:-nestgrow_db}
+                MQTT_HOST: mosquitto
+                MQTT_PORT: 1883
+                LICENSE_SERVER_URL: https://license.lake8.dev
+                JWT_SECRET: ${JWT_SECRET}
+                ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+              volumes:
+                - ./backups:/app/backups
+              restart: unless-stopped
+
+            frontend:
+              image: ghcr.io/jaffa2970/nestgrow-frontend:VERSION_PLACEHOLDER
+              container_name: nestgrow-frontend
+              ports:
+                - "3001:80"
+              depends_on:
+                - backend
+              restart: unless-stopped
+
+          volumes:
+            mariadb_data:
+            mosquitto_data:
+          COMPOSE_EOF
+
+          # Sostituisce il placeholder con la versione reale
+          sed -i "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.VERSION }}/g" "$DIR/docker-compose.yml"
+
+          cat > "$DIR/.env.example" << 'ENV_EOF'
+          # Database
+          DB_NAME=nestgrow_db
+          DB_USER=nestgrow
+          DB_PASSWORD=CAMBIA_QUESTA_PASSWORD
+          DB_ROOT_PASSWORD=CAMBIA_QUESTA_PASSWORD_ROOT
+
+          # Sicurezza
+          JWT_SECRET=GENERA_CON: python3 -c "import secrets; print(secrets.token_hex(32))"
+          ADMIN_PASSWORD=CAMBIA_QUESTA_PASSWORD_ADMIN
+          ENV_EOF
+
+          cat > "$DIR/mosquitto/config/mosquitto.conf" << 'MQTT_EOF'
+          listener 1883
+          allow_anonymous true
+          persistence true
+          persistence_location /mosquitto/data/
+          log_dest stdout
+          MQTT_EOF
+
+          cat > "$DIR/INSTALL.md" << 'INSTALL_EOF'
+          # NestGrow — Installazione
+
+          ## Requisiti
+          - Docker >= 24.0
+          - Docker Compose >= 2.0
+          - Porte 1883, 8000, 3001 disponibili
+
+          ## Installazione in 5 passi
+
+          1. Estrai questo archivio
+          2. Copia .env.example in .env
+             cp .env.example .env
+          3. Modifica .env con le tue password
+          4. Avvia il sistema
+             docker compose up -d
+          5. Apri il browser su http://localhost:3001
+             e registra la tua licenza gratuita
+
+          ## Firmware ESP32
+          Il firmware open source per ESP32 è disponibile su:
+          https://github.com/jaffa2970/nestgrow-esp32
+
+          ## Supporto
+          https://nestgrow.lake8.dev
+          INSTALL_EOF
+
+          zip -r "$DIR.zip" "$DIR/"
+          echo "Package created: $DIR.zip"
+          ls -lh "$DIR.zip"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nestgrow-docker-${{ steps.version.outputs.VERSION }}.zip
