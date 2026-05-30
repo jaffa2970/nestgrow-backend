@@ -116,7 +116,7 @@ docker exec nestgrow-backend chmod 777 /app/backups
 ## Firmware ESP32
 
 Il firmware open source per ESP32 è disponibile su:
-**https://github.com/lake8dev/nestgrow-esp32**
+**https://github.com/jaffa2970/nestgrow-esp32**
 
 ---
 
