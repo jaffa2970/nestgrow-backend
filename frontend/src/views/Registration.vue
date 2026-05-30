@@ -40,12 +40,15 @@
               :class="{
                 selected: form.piano === p.id,
                 current: isUpgrade && p.id === currentPiano,
-                disabled: p.contact || (isUpgrade && p.id === currentPiano),
+                disabled: p.contact || p.comingSoon || (isUpgrade && p.id === currentPiano),
               }"
-              @click="!p.contact && !(isUpgrade && p.id === currentPiano) ? (form.piano = p.id) : null"
+              :style="p.comingSoon ? { opacity: 0.5 } : {}"
+              @click="!p.contact && !p.comingSoon && !(isUpgrade && p.id === currentPiano) ? (form.piano = p.id) : null"
             >
+              <div v-if="p.beta" class="plan-badge beta">BETA</div>
               <div class="plan-name">{{ p.name }}</div>
-              <div class="plan-price">{{ p.price }}</div>
+              <div v-if="p.price" class="plan-price">{{ p.price }}</div>
+              <div v-if="p.betaSubtitle" class="plan-beta-subtitle">{{ p.betaSubtitle }}</div>
               <div class="plan-culle">{{ p.culle }}</div>
               <div v-if="isUpgrade && p.id === currentPiano" class="plan-badge current">
                 Piano attivo
@@ -54,9 +57,10 @@
                 type="button"
                 class="plan-btn"
                 :class="{ active: form.piano === p.id }"
-                :disabled="p.contact || (isUpgrade && p.id === currentPiano)"
+                :disabled="p.contact || p.comingSoon || (isUpgrade && p.id === currentPiano)"
               >
-                <template v-if="p.contact">Contattaci</template>
+                <template v-if="p.comingSoon">Disponibile presto</template>
+                <template v-else-if="p.contact">Contattaci</template>
                 <template v-else-if="isUpgrade && p.id === currentPiano">Attivo</template>
                 <template v-else-if="form.piano === p.id">✓ Selezionato</template>
                 <template v-else>Seleziona</template>
@@ -151,10 +155,10 @@ const form = ref({
 
 // enterprise maps to the "ai" plan on the License Server (10 culle)
 const plans = [
-  { id: 'free',       name: 'Free',       price: '€0/mese',   culle: '1 culla',   contact: false },
-  { id: 'pro',        name: 'Pro',        price: '€29/mese',  culle: '5 culle',   contact: false },
-  { id: 'enterprise', name: 'Enterprise', price: '€99/mese',  culle: '10 culle',  contact: false },
-  { id: 'ultra',      name: 'Ultra',      price: 'Su misura', culle: 'Illimitato', contact: true },
+  { id: 'free',       name: 'Free',       price: '€0/mese',            culle: '1 culla',    contact: false },
+  { id: 'pro',        name: 'Pro',        price: '€0/mese — Gratuito', culle: '5 culle',    contact: false, beta: true, betaSubtitle: 'Gratuito durante la beta' },
+  { id: 'enterprise', name: 'Enterprise', price: '',                   culle: '10 culle',   contact: false, comingSoon: true },
+  { id: 'ultra',      name: 'Ultra',      price: 'Su misura',          culle: 'Illimitato', contact: true },
 ]
 
 onMounted(async () => {
@@ -313,6 +317,22 @@ onUnmounted(() => {
 
 .plan-badge { font-size: 0.7rem; font-weight: 600; margin-bottom: 6px; }
 .plan-badge.current { color: #888; }
+.plan-badge.beta {
+  display: inline-block;
+  background: #ff9800;
+  color: white;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.plan-beta-subtitle {
+  font-size: 0.7rem;
+  color: #e65100;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
 
 .plan-btn {
   width: 100%; padding: 6px;
