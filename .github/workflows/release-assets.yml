@@ -53,7 +53,7 @@ jobs:
               restart: unless-stopped
 
             backend:
-              image: ghcr.io/jaffa2970/nestgrow-backend:VERSION_PLACEHOLDER
+              image: ghcr.io/jaffa2970/nestgrow-backend:latest
               container_name: nestgrow-backend
               depends_on:
                 db:
@@ -66,6 +66,8 @@ jobs:
                 DB_URL: mysql+aiomysql://${DB_USER:-nestgrow}:${DB_PASSWORD}@db/${DB_NAME:-nestgrow_db}
                 MQTT_HOST: mosquitto
                 MQTT_PORT: 1883
+                MQTT_USER: ${MQTT_USER:-nestgrow}
+                MQTT_PASSWORD: ${MQTT_PASSWORD}
                 LICENSE_SERVER_URL: https://license.lake8.dev
                 JWT_SECRET: ${JWT_SECRET}
                 ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -74,7 +76,7 @@ jobs:
               restart: unless-stopped
 
             frontend:
-              image: ghcr.io/jaffa2970/nestgrow-frontend:VERSION_PLACEHOLDER
+              image: ghcr.io/jaffa2970/nestgrow-frontend:latest
               container_name: nestgrow-frontend
               ports:
                 - "3001:80"
@@ -87,9 +89,6 @@ jobs:
             mosquitto_data:
           COMPOSE_EOF
 
-          # Sostituisce il placeholder con la versione reale
-          sed -i "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.VERSION }}/g" "$DIR/docker-compose.yml"
-
           cat > "$DIR/.env.example" << 'ENV_EOF'
           # Database
           DB_NAME=nestgrow_db
@@ -100,6 +99,10 @@ jobs:
           # Sicurezza
           JWT_SECRET=GENERA_CON: python3 -c "import secrets; print(secrets.token_hex(32))"
           ADMIN_PASSWORD=CAMBIA_QUESTA_PASSWORD_ADMIN
+
+          # MQTT
+          MQTT_USER=nestgrow
+          MQTT_PASSWORD=CAMBIA_QUESTA_PASSWORD_MQTT
           ENV_EOF
 
           cat > "$DIR/mosquitto/config/mosquitto.conf" << 'MQTT_EOF'
