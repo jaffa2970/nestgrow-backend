@@ -1,8 +1,8 @@
 name: Publish Docker image
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -30,10 +30,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/jaffa2970/nestgrow-backend
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
       - name: Build and push backend
@@ -65,10 +63,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/nestgrow-frontend
+          images: ghcr.io/jaffa2970/nestgrow-frontend
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
       - name: Build and push frontend
