@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -54,13 +55,13 @@ async def _dump_sql() -> bytes:
         "mysqldump",
         f"-h{host}",
         f"-u{user}",
-        f"-p{password}",
         "--single-transaction",
         "--routines",
         "--triggers",
         db,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "MYSQL_PWD": password or ""},
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
@@ -152,11 +153,11 @@ async def restore_from_upload(
         "mysql",
         f"-h{host}",
         f"-u{user}",
-        f"-p{password}",
         db,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "MYSQL_PWD": password or ""},
     )
     _, stderr = await proc.communicate(input=sql_data)
     if proc.returncode != 0:
@@ -187,11 +188,11 @@ async def restore_backup(body: RestoreBody, _: dict = Depends(require_admin)):
         "mysql",
         f"-h{host}",
         f"-u{user}",
-        f"-p{password}",
         db,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "MYSQL_PWD": password or ""},
     )
     _, stderr = await proc.communicate(input=sql_data)
 

@@ -5,7 +5,7 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./mosquitto/config:/mosquitto/config:ro
+      - ./mosquitto/config:/mosquitto/config
       - mosquitto_data:/mosquitto/data
     restart: unless-stopped
 
@@ -41,6 +41,8 @@ services:
       DB_URL: mysql+aiomysql://nestgrow:${DB_PASSWORD}@db/nestgrow_db
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
+      MQTT_USER: ${MQTT_USER:-nestgrow}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
     volumes:
       - ./backups:/app/backups
     depends_on:

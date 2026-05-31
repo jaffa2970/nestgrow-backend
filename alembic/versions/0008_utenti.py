@@ -30,8 +30,13 @@ def upgrade() -> None:
 
     from passlib.context import CryptContext
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    admin_pass = os.getenv("ADMIN_PASSWORD", os.getenv("ADMIN_PASS", "admin"))
-    hashed = pwd.hash(admin_pass)
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_password:
+        raise ValueError(
+            "ADMIN_PASSWORD non impostata — "
+            "impossibile creare utente admin di default"
+        )
+    hashed = pwd.hash(admin_password)
     op.execute(
         sa.text(
             "INSERT INTO utenti (username, password_hash, ruolo, attivo) "

@@ -6,7 +6,11 @@ BACKUP_FILE=$1
 CONTAINER="nestgrow-db"
 DB="nestgrow_db"
 USER="nestgrow"
-PASS="nestgrow"
+PASS="${DB_PASSWORD:-$(cat /run/secrets/db_password 2>/dev/null)}"
+if [ -z "$PASS" ]; then
+  echo "❌ DB_PASSWORD non impostata"
+  exit 1
+fi
 
 if [ -z "$BACKUP_FILE" ]; then
   echo "Uso: ./backup/restore.sh <file_backup.sql.gz>"

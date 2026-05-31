@@ -155,7 +155,12 @@ async def mqtt_loop(stop_event: asyncio.Event) -> None:
 
     while not stop_event.is_set():
         try:
-            async with Client(settings.mqtt_host, port=settings.mqtt_port) as client:
+            async with Client(
+                settings.mqtt_host,
+                port=settings.mqtt_port,
+                username=settings.mqtt_user if settings.mqtt_user else None,
+                password=settings.mqtt_password if settings.mqtt_password else None,
+            ) as client:
                 import app.mqtt_client as _self
                 _self._client = client
 

@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     db_url: str = "mysql+aiomysql://nestgrow:nestgrow@db/nestgrow_db"
     mqtt_host: str = "mosquitto"
     mqtt_port: int = 1883
+    mqtt_user: str = "nestgrow"
+    mqtt_password: str = ""
     license_server_url: str = "https://license.lake8.dev"
     jwt_secret: str = "changeme"
     jwt_algorithm: str = "HS256"
@@ -18,3 +20,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.jwt_secret == "changeme":
+    raise ValueError(
+        "JWT_SECRET non impostata nel .env — "
+        'genera con: python3 -c "import secrets; print(secrets.token_hex(32))"'
+    )

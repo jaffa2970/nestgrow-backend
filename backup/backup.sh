@@ -8,7 +8,11 @@ FILENAME="nestgrow_backup_${TIMESTAMP}.sql.gz"
 CONTAINER="nestgrow-db"
 DB="nestgrow_db"
 USER="nestgrow"
-PASS="nestgrow"
+PASS="${DB_PASSWORD:-$(cat /run/secrets/db_password 2>/dev/null)}"
+if [ -z "$PASS" ]; then
+  echo "❌ DB_PASSWORD non impostata"
+  exit 1
+fi
 
 mkdir -p "$BACKUP_DIR"
 

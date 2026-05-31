@@ -169,8 +169,8 @@ async def set_password(
     if not utente:
         raise HTTPException(status_code=404, detail="Utente non trovato")
 
-    # Non-admins must provide current password; admins changing others don't need it
-    if is_self and not is_admin:
+    # Changing own password always requires current password, regardless of role
+    if is_self:
         if not body.password_attuale or not verify_password(body.password_attuale, utente.password_hash):
             raise HTTPException(status_code=400, detail="Password attuale non corretta")
 

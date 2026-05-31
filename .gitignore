@@ -38,6 +38,7 @@ frontend/node_modules/
 # Docker volumes locali
 mosquitto/data/
 mosquitto/log/
+mosquitto/config/passwd
 mariadb_data/
 
 # Certificati e chiavi
