@@ -60,3 +60,16 @@ mariadb_data/
 *.swp
 *.swo
 *~
+app/
+alembic/
+frontend/
+backup/
+mosquitto/
+docs/
+.claude/
+Dockerfile
+requirements.txt
+setup.py
+build_cython.sh
+test_mqtt.py
+alembic.ini
