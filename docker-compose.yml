@@ -5,7 +5,7 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./mosquitto/config:/mosquitto/config:ro
+      - ./mosquitto/config:/mosquitto/config
       - mosquitto_data:/mosquitto/data
     restart: unless-stopped
 
@@ -13,10 +13,10 @@ services:
     image: mariadb:11
     container_name: nestgrow-db
     environment:
-      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MARIADB_DATABASE: nestgrow_db
       MARIADB_USER: nestgrow
-      MARIADB_PASSWORD: nestgrow
+      MARIADB_PASSWORD: ${DB_PASSWORD}
     ports:
       - "3307:3306"
     volumes:
@@ -38,9 +38,11 @@ services:
     env_file:
       - .env
     environment:
-      DB_URL: mysql+aiomysql://nestgrow:nestgrow@db/nestgrow_db
+      DB_URL: mysql+aiomysql://nestgrow:${DB_PASSWORD}@db/nestgrow_db
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
+      MQTT_USER: ${MQTT_USER:-nestgrow}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
     volumes:
       - ./backups:/app/backups
     depends_on:

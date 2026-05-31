@@ -56,19 +56,54 @@ Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo 
 ```bash
 git clone https://github.com/jaffa2970/nestgrow-backend
 cd nestgrow-backend
-cp .env.example .env        # modifica le variabili
+cp .env.example .env        # modifica le variabili (vedi sotto)
 
 # Crea la cartella backups con i permessi corretti PRIMA di avviare
 mkdir -p backups && chmod 777 backups
+
+# Genera il file di autenticazione MQTT (obbligatorio)
+./init_mqtt_auth.sh
 
 docker compose up --build
 ```
 
 Accedi a:
 
-- **Dashboard:** http://localhost:3000
+- **Dashboard:** http://localhost:3001
 - **API docs:** http://localhost:8000/docs
-- **Credenziali default:** `admin` / `admin` _(cambia `ADMIN_PASSWORD` in `.env`)_
+
+---
+
+## 🔑 Primo accesso
+
+Dopo `docker compose up -d` apri il browser su:
+
+**http://localhost:3001**
+
+### Credenziali dashboard
+
+| Campo | Valore |
+|---|---|
+| **Username** | `admin` |
+| **Password** | il valore di `ADMIN_PASSWORD` nel tuo `.env` |
+
+> ⚠️ **Importante**: la password admin è quella che hai impostato nel file `.env` prima di avviare il sistema.
+> Se non ricordi quale hai impostato:
+> ```bash
+> cat .env | grep ADMIN_PASSWORD
+> ```
+
+### Al primo avvio
+
+La dashboard mostra la schermata di **registrazione licenza**.
+Inserisci i tuoi dati e scegli il piano:
+
+| Piano | Culle | Costo |
+|-------|-------|-------|
+| **Free** | 1 | Gratuito per sempre |
+| **Pro** | 5 | Gratuito durante la beta |
+
+Dopo la registrazione riceverai conferma via email e potrai accedere alla dashboard completa.
 
 ---
 
@@ -135,14 +170,18 @@ Il firmware open source per ESP32 è disponibile su:
 
 ## Variabili d'ambiente
 
-| Variabile | Default | Descrizione |
-|-----------|---------|-------------|
-| `DB_URL` | `mysql+aiomysql://nestgrow:nestgrow@db/nestgrow_db` | Connection string MariaDB |
-| `MQTT_HOST` | `mosquitto` | Hostname broker MQTT |
-| `MQTT_PORT` | `1883` | Porta broker MQTT |
-| `LICENSE_SERVER_URL` | `https://license.lake8.dev` | URL License Server |
-| `JWT_SECRET` | `changeme` | Segreto JWT (**CAMBIA in produzione**) |
-| `ADMIN_PASSWORD` | `admin` | Password admin dashboard (**CAMBIA in produzione**) |
+| Variabile | Obbligatoria | Descrizione |
+|-----------|-------------|-------------|
+| `DB_URL` | ✅ | Connection string MariaDB |
+| `DB_PASSWORD` | ✅ | Password utente DB (usata anche nel compose) |
+| `DB_ROOT_PASSWORD` | ✅ | Password root MariaDB |
+| `JWT_SECRET` | ✅ | Segreto JWT — genera con `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `ADMIN_PASSWORD` | ✅ | Password admin dashboard |
+| `MQTT_USER` | — | Utente MQTT (default: `nestgrow`) |
+| `MQTT_PASSWORD` | ✅ | Password broker MQTT |
+| `MQTT_HOST` | — | Hostname broker MQTT (default: `mosquitto`) |
+| `MQTT_PORT` | — | Porta broker MQTT (default: `1883`) |
+| `LICENSE_SERVER_URL` | — | URL License Server (default: `https://license.lake8.dev`) |
 
 ---
 
