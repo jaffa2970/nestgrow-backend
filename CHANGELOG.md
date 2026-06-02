@@ -5,6 +5,18 @@ Formato: [Semantic Versioning](https://semver.org/lang/it/)
 
 ---
 
+## [0.3.1] — 2026-06-02
+
+### Aggiunto
+
+- **Ping telemetria anonimo** ogni 6 ore verso il License Server (`/telemetry/ping`): invia prodotto, versione, `machine_id` e stato registrazione — nessun dato personale
+- Flag `TELEMETRY_ENABLED=true` in `.env.example`; impostare a `false` per disabilitare il ping
+- Campo `registrato` nel payload aggiornato automaticamente a `true` quando è presente un JWT di licenza valido (al boot o dopo attivazione)
+- Job APScheduler `ping_anonimo` con intervallo di 6 ore
+- Chiamata `ping_anonimo()` eseguita anche all'avvio del backend, subito dopo il check della licenza
+
+---
+
 ## [0.1.1] — 2026-05-15
 
 ### Sicurezza

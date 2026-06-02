@@ -13,6 +13,9 @@ from app.models import LicenzaCache, PianoLimiti
 logger = logging.getLogger(__name__)
 
 MACHINE_ID = "nestgrow-server"
+VERSION = "0.3.0"
+
+_registered: bool = False
 
 PIANO_LIMITI_DEFAULT = {
     "free": 1,
@@ -55,6 +58,8 @@ async def get_max_culle(db: AsyncSession) -> int:
 
 async def _save_jwt_to_db(db: AsyncSession, token: str) -> None:
     """Decode JWT and INSERT or UPDATE licenza_cache row (id=1)."""
+    global _registered
+    _registered = True
     payload = _decode_jwt_payload(token)
     piano = payload.get("piano", "free")
     exp = payload.get("exp")
@@ -90,10 +95,12 @@ async def _save_jwt_to_db(db: AsyncSession, token: str) -> None:
 
 async def check_license_on_boot(db: AsyncSession) -> None:
     """Called once at startup. If no JWT is cached, attempt recovery from the LS."""
+    global _registered
     licenza = await get_licenza(db)
 
     if licenza and licenza.jwt_token:
         logger.info("Licenza presente al boot (piano=%s) — ok", licenza.piano)
+        _registered = True
         return
 
     logger.info("Licenza assente al boot — tento recovery dal License Server...")
@@ -172,6 +179,29 @@ async def poll_pending_jwt() -> None:
         await _save_jwt_to_db(db, token)
         payload = _decode_jwt_payload(token)
         logger.info("JWT salvato in background (piano=%s)", payload.get("piano"))
+
+
+# ── Telemetry ping ────────────────────────────────────────────────────────────
+
+async def ping_anonimo() -> None:
+    if not settings.telemetry_enabled:
+        logger.debug("Ping anonimo: telemetry disabilitata")
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.license_server_url}/telemetry/ping",
+                json={
+                    "prodotto": "NESTGROW",
+                    "versione": VERSION,
+                    "machine_id": MACHINE_ID,
+                    "stato": "attivo",
+                    "registrato": _registered,
+                },
+            )
+        logger.info("Ping anonimo: %d", resp.status_code)
+    except Exception as e:
+        logger.debug("Ping anonimo fallito: %s", e)
 
 
 # ── Heartbeat ──────────────────────────────────────────────────────────────────

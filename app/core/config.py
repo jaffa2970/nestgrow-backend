@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 8
     admin_password: str = "admin"
     admin_username: str = "admin"
+    telemetry_enabled: bool = True
 
     class Config:
         env_file = ".env"

@@ -16,7 +16,7 @@ from app.api import messages as messages_api
 from app.api import support as support_api
 from app.api import utenti as utenti_api
 from app.database import AsyncSessionLocal, engine
-from app.licensing import check_license_on_boot, heartbeat, poll_pending_jwt
+from app.licensing import check_license_on_boot, heartbeat, ping_anonimo, poll_pending_jwt
 from app.messaging import sync_messages
 
 logging.basicConfig(level=logging.INFO)
@@ -228,6 +228,7 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(sync_messages, "interval", minutes=30, id="messages_sync")
     _scheduler.add_job(_auto_backup, "cron", hour=2, minute=0, id="auto_backup")
     _scheduler.add_job(_cleanup_old_readings, "cron", hour=3, minute=0, id="cleanup_readings")
+    _scheduler.add_job(ping_anonimo, "interval", hours=6, id="ping_anonimo")
     _scheduler.start()
     logger.info("Scheduler avviato — job registrati: %s", [j.id for j in _scheduler.get_jobs()])
 
@@ -237,6 +238,11 @@ async def lifespan(app: FastAPI):
             await check_license_on_boot(db)
     except Exception as exc:
         logger.error("check_license_on_boot ha fallito: %s", exc, exc_info=True)
+
+    try:
+        await ping_anonimo()
+    except Exception as exc:
+        logger.error("ping_anonimo al boot ha fallito: %s", exc, exc_info=True)
 
     try:
         await sync_messages()
