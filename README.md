@@ -1,43 +1,115 @@
 # NestGrow 🌱
 **by lake8.dev**
 
-Sistema di gestione intelligente per culle di accrescimento vegetale. Controllo IoT via ESP32, irrigazione automatica con logica a soglie, dashboard real-time con grafici storici. Multi-tenant con licensing per piano.
+Sistema IoT per la gestione automatizzata di celle di coltivazione orticola.
+ESP32 firmware + Docker backend + dashboard Vue 3.
 
 ---
 
-## Features
+## Caratteristiche principali / Key Features
 
-- Gestione culle con limite dipendente dal piano licenza
-- Controllo pompe indipendenti per zona via MQTT
-- Sensori umidità suolo capacitivi per zona
-- Sensore livello serbatoio centralizzato
-- Logica irrigazione automatica a soglie
-- **Grafici storici** per zona: umidità, serbatoio, irrigazioni, efficacia (ECharts) con **aggiornamento automatico ogni 60 secondi** e indicatore "Aggiornato alle HH:MM:SS"
-- Configurazione zona con sincronizzazione MQTT verso ESP32 (soglie, intervallo lettura)
-- Dashboard Vue 3 con aggiornamento real-time
-- **Protezione serbatoio vuoto**: pulsante pompa ON disabilitato in dashboard + blocco HTTP 403 dal backend quando livello è 0
-- **Sistema backup/restore** database con download diretto via browser
-- **Recupero automatico licenza** al boot: se il JWT non è in cache, tenta il recovery dal License Server
-- **Pulizia automatica** letture storiche (retention configurabile, default 30 giorni, cron 03:00)
-- **Export Excel** letture, irrigazioni e riepilogo per zona (openpyxl, 3 sheet, formattazione)
-- Gestione utenti multi-ruolo (administrator / user)
-- Messaggi e notifiche dal License Server
-- Supporto ticket integrato con License Server
-- Integrazione License Server lake8.dev
+### 🇮🇹 Italiano
+
+**Gestione culle**
+- Fino a 4 zone indipendenti per culla con sensori umidità capacitivi
+- Irrigazione automatica a soglie configurabili (min/max per zona)
+- Irrigazione manuale dalla dashboard
+- Cooldown 10 minuti tra irrigazioni consecutive
+- Safety: timeout valvola 5 min, blocco automatico con serbatoio vuoto
+
+**Monitoraggio**
+- Grafici ECharts in tempo reale: umidità per zona, livello serbatoio, irrigazioni, efficacia
+- Aggiornamento automatico ogni 60 secondi con indicatore timestamp
+- Export Excel: letture, irrigazioni, riepilogo per zona (3 sheet)
+- Backup automatico notturno alle 02:00 con download diretto da browser
+- Retention dati configurabile (default 30 giorni)
+
+**Simulatore ESP32**
+- Simulatore integrato per testare il sistema senza hardware fisico
+- Scenari rapidi: terreno secco / normale / dopo irrigazione
+- Sliders per umidità iniziale per zona, velocità evaporazione, livello serbatoio
+- Perfetto per provare NestGrow prima di flashare una ESP32
+
+**Piani e licenze**
+- FREE: 1 culla (simulatore incluso, gratuito per sempre)
+- PRO: 5 culle
+- ENTERPRISE: 10 culle
+- ULTRA: illimitato
+- Le culle oltre il limite del piano restano **visibili in read-only**: grafici e dati accessibili, controlli disabilitati
+- Badge "Piano insufficiente" sulle culle bloccate con link diretto all'upgrade
+
+**Multilingua**
+- Interfaccia disponibile in Italiano, English, Deutsch
+- Toggle lingua nella navbar
+
+**Gestione utenti**
+- Ruolo Administrator (lettura/scrittura completa)
+- Ruolo User (solo lettura)
+
+**Supporto tecnico**
+- Ticket bidirezionali integrati nella dashboard
+- Messaggi e comunicazioni dal team lake8.dev
 
 ---
 
-## Piani disponibili
+### 🇬🇧 English
 
-| Piano | Culle | Note |
-|-------|-------|------|
-| Free | 1 | Hobbisti e test |
-| Pro | 5 | Piccoli produttori |
-| AI | 10 | Vivai e aziende agricole |
+**Cell management**
+- Up to 4 independent zones per cell with capacitive moisture sensors
+- Automatic irrigation with configurable thresholds (min/max per zone)
+- Manual irrigation from the dashboard
+- 10-minute cooldown between consecutive irrigations
+- Safety: 5-min valve timeout, automatic lock when tank is empty
+
+**Monitoring**
+- Real-time ECharts graphs: moisture per zone, tank level, irrigations, effectiveness
+- Auto-refresh every 60 seconds with timestamp indicator
+- Excel export: readings, irrigations, per-zone summary (3 sheets)
+- Automatic nightly backup at 02:00 with direct browser download
+- Configurable data retention (default 30 days)
+
+**ESP32 Simulator**
+- Built-in simulator to test the system without physical hardware
+- Quick scenarios: dry soil / normal / after irrigation
+- Sliders for per-zone initial moisture, evaporation speed, tank level
+- Perfect for trying NestGrow before flashing an ESP32
+
+**Plans & licensing**
+- FREE: 1 cell (simulator included, free forever)
+- PRO: 5 cells
+- ENTERPRISE: 10 cells
+- ULTRA: unlimited
+- Cells beyond plan limit remain **visible in read-only**: data and graphs accessible, controls disabled
+- "Insufficient plan" badge on blocked cells with direct upgrade link
+
+**Multilingual**
+- Interface available in Italian, English, Deutsch
+- Language toggle in navbar
+
+**User management**
+- Administrator role (full read/write)
+- User role (read-only)
+
+**Technical support**
+- Bidirectional tickets integrated in the dashboard
+- Messages and communications from the lake8.dev team
 
 ---
 
-## Stack tecnico
+## Piani disponibili / Available Plans
+
+| Piano / Plan | Culle / Cells | Note |
+|---|---|---|
+| **Free** | 1 | Hobbisti e test / Hobbyists and testing |
+| **Pro** | 5 | Piccoli produttori / Small producers |
+| **Enterprise** | 10 | Vivai e aziende agricole / Nurseries and farms |
+| **Ultra** | ∞ | Illimitato / Unlimited |
+
+Le culle oltre il limite del piano attivo rimangono visibili con grafici e letture storiche accessibili, ma tutti i controlli (irrigazione manuale, modifica configurazione, simulatore) vengono disabilitati finché non si effettua l'upgrade.
+
+---
+
+## Stack tecnico / Tech Stack
 
 | Componente | Tecnologia |
 |------------|------------|
@@ -118,14 +190,6 @@ NestGrow include un sistema completo di backup del database.
 - **Restore da volume** — ripristina uno dei backup salvati sul server
 - **Restore da file** — carica un file `.sql.gz` locale e ripristina il database
 
-### Via script host (cartella `backup/`)
-
-```bash
-./backup/backup.sh              # crea backup in ./backups/
-./backup/list.sh                # lista backup disponibili
-./backup/restore.sh <file.sql.gz>  # ripristino interattivo (chiede conferma)
-```
-
 ### Backup automatico
 
 Il backend esegue automaticamente un backup ogni giorno alle 02:00 (APScheduler cron job).
@@ -189,8 +253,9 @@ Il firmware open source per ESP32 è disponibile su:
 
 | Job | Intervallo | Funzione |
 |-----|-----------|---------|
-| `irrigation_tick` | 60 sec | Logica irrigazione automatica a soglie |
-| `jwt_poll` | 5 min | Ritiro JWT pendenti dal License Server (funziona anche con DB vuoto) |
+| `irrigation_tick` | 60 sec | Logica irrigazione automatica a soglie (salta culle bloccate dal piano) |
+| `jwt_poll` | 5 min | Ritiro JWT pendenti dal License Server |
+| `license_status_check` | 30 min | Verifica stato licenza sul License Server |
 | `messages_sync` | 30 min | Sincronizzazione messaggi/notifiche |
 | `license_heartbeat` | 60 min | Heartbeat verso License Server |
 | `auto_backup` | ogni giorno 02:00 | Backup automatico database (mantiene ultimi 30) |
